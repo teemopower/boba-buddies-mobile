@@ -200,11 +200,11 @@ export const PP = {
 
 /** Low-meter reminder copy, verbatim from background.js.
  * Order matters: only the FIRST low meter fires per tick. */
-export const LOW_METER_ALERTS: ReadonlyArray<{
+export const LOW_METER_ALERTS: readonly {
   meter: MeterKey;
   titleSuffix: string;
   body: (petName: string) => string;
-}> = [
+}[] = [
   { meter: 'hunger', titleSuffix: 'is hungry! 🍡', body: (n) => `Feed ${n} a meal.` },
   { meter: 'thirst', titleSuffix: 'is thirsty! 🧋', body: (n) => `Give ${n} a drink.` },
   { meter: 'energy', titleSuffix: 'is sleepy… 💤', body: (n) => `Tuck ${n} in for a nap.` },

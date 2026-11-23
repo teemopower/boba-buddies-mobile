@@ -265,11 +265,14 @@ function resolveSequence(a: PetAssets, mood: MoodId, action: PetAction): SeqStep
 
 /** Advance through a looping frame sequence, resetting on sequence change. */
 function useFrameSequence(sequence: SeqStep[], seqKey: string): Frame {
-  const [index, setIndex] = useState(0);
+  const [state, setState] = useState({ seqKey, index: 0 });
 
-  useEffect(() => {
-    setIndex(0);
-  }, [seqKey]);
+  // Reset to frame 0 when the sequence changes (React's "adjusting state
+  // during render" pattern — resetting in an effect would cascade renders).
+  if (state.seqKey !== seqKey) {
+    setState({ seqKey, index: 0 });
+  }
+  const index = state.seqKey === seqKey ? state.index : 0;
 
   useEffect(() => {
     if (sequence.length <= 1) {
@@ -277,7 +280,7 @@ function useFrameSequence(sequence: SeqStep[], seqKey: string): Frame {
     }
     const step = sequence[index % sequence.length];
     const timeout = setTimeout(() => {
-      setIndex((i) => (i + 1) % sequence.length);
+      setState((s) => ({ ...s, index: (s.index + 1) % sequence.length }));
     }, step.durationMs);
     return () => clearTimeout(timeout);
   }, [index, seqKey, sequence]);
