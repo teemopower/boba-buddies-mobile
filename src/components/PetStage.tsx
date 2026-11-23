@@ -104,6 +104,7 @@ function PngPet({ petId, size }: { petId: string; size: number }) {
     <Animated.View style={style}>
       <Image
         source={PET_IMAGES[petId] ?? PET_IMAGES.momo}
+        fadeDuration={0}
         style={{ width: size, height: size, resizeMode: 'contain' }}
         accessibilityLabel={ppPetById(petId).name}
       />

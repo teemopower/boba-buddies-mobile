@@ -88,12 +88,18 @@ export interface AnimatedPetProps {
 /* Frames                                                              */
 /* ------------------------------------------------------------------ */
 
-/** A single drawable frame: a whole image, or one panel of a sheet. */
+/** A single drawable frame: a whole image, or one panel of a sheet.
+ *  `layer` / `sheet` name the always-mounted layer that renders it (see
+ *  the layered rendering below) — frames never swap Image sources. */
+type StillKey = 'base' | 'blink' | 'eat' | 'drink' | 'happy' | 'sad' | 'sleep';
+type SheetKey = 'expressions' | 'actions';
+type LayerKey = StillKey | SheetKey;
+
 type Frame =
-  | { kind: 'image'; source: ImageSourcePropType }
+  | { kind: 'image'; source: ImageSourcePropType; layer: StillKey }
   | {
       kind: 'panel';
-      sheet: ImageSourcePropType;
+      sheet: SheetKey;
       col: number;
       row: number;
       cols: number;
@@ -243,7 +249,7 @@ const PET_ASSETS: Record<PetId, PetAssets> = {
 function sheetPanels(a: PetAssets): Record<string, Frame> {
   const expr = (col: number, row: number): Frame => ({
     kind: 'panel',
-    sheet: a.expressionsSheet,
+    sheet: 'expressions',
     col,
     row,
     cols: 3,
@@ -251,7 +257,7 @@ function sheetPanels(a: PetAssets): Record<string, Frame> {
   });
   const act = (col: number, row: number): Frame => ({
     kind: 'panel',
-    sheet: a.actionsSheet,
+    sheet: 'actions',
     col,
     row,
     cols: 2,
@@ -271,7 +277,11 @@ function sheetPanels(a: PetAssets): Record<string, Frame> {
   };
 }
 
-const img = (source: ImageSourcePropType): Frame => ({ kind: 'image', source });
+const img = (source: ImageSourcePropType, layer: StillKey): Frame => ({
+  kind: 'image',
+  source,
+  layer,
+});
 
 /**
  * Resolve the frame sequence for a (mood, action) pair. Action wins when it
@@ -280,10 +290,10 @@ const img = (source: ImageSourcePropType): Frame => ({ kind: 'image', source });
  */
 function resolveSequence(a: PetAssets, mood: MoodId, action: PetAction): SeqStep[] {
   const p = sheetPanels(a);
-  const base = img(a.base);
+  const base = img(a.base, 'base');
   const blink: SeqStep[] = [
     { frame: base, durationMs: 3850 },
-    { frame: img(a.blink), durationMs: 150 },
+    { frame: img(a.blink, 'blink'), durationMs: 150 },
   ];
 
   if (action !== 'idle') {
@@ -299,15 +309,15 @@ function resolveSequence(a: PetAssets, mood: MoodId, action: PetAction): SeqStep
       case 'drink':
         // Sip loop: drink frame, brief return to base (gulp).
         return [
-          { frame: img(a.drink), durationMs: 1000 },
+          { frame: img(a.drink, 'drink'), durationMs: 1000 },
           { frame: base, durationMs: 300 },
         ];
       case 'sleep':
-        return [{ frame: img(a.sleep), durationMs: 1000 }];
+        return [{ frame: img(a.sleep, 'sleep'), durationMs: 1000 }];
       case 'play':
         return [
           { frame: base, durationMs: 300 },
-          { frame: img(a.happy), durationMs: 300 },
+          { frame: img(a.happy, 'happy'), durationMs: 300 },
         ];
       case 'sick':
         return [{ frame: p.sick, durationMs: 1000 }];
@@ -321,7 +331,7 @@ function resolveSequence(a: PetAssets, mood: MoodId, action: PetAction): SeqStep
       case 'celebrate':
         return [
           { frame: p.celebrate, durationMs: 450 },
-          { frame: img(a.happy), durationMs: 450 },
+          { frame: img(a.happy, 'happy'), durationMs: 450 },
         ];
       case 'lonely':
         return [{ frame: p.lonely, durationMs: 1000 }];
@@ -332,24 +342,24 @@ function resolveSequence(a: PetAssets, mood: MoodId, action: PetAction): SeqStep
 
   switch (mood) {
     case 'happy':
-      return [{ frame: img(a.happy), durationMs: 1000 }];
+      return [{ frame: img(a.happy, 'happy'), durationMs: 1000 }];
     case 'excited':
       return [{ frame: p.excited, durationMs: 1000 }];
     case 'sick':
       return [{ frame: p.sick, durationMs: 1000 }];
     case 'sad':
-      return [{ frame: img(a.sad), durationMs: 1000 }];
+      return [{ frame: img(a.sad, 'sad'), durationMs: 1000 }];
     case 'grumpy':
       return [{ frame: p.grumpy, durationMs: 1000 }];
     case 'lonely':
       return [{ frame: p.lonely, durationMs: 1000 }];
     case 'sleepy':
-      return [{ frame: img(a.sleep), durationMs: 1000 }];
+      return [{ frame: img(a.sleep, 'sleep'), durationMs: 1000 }];
     case 'sleeping':
       // Curled-up deep-sleep panel (has its own drawn Zzz).
       return [{ frame: p.sleepDeep, durationMs: 1000 }];
     case 'thirsty':
-      return [{ frame: img(a.drink), durationMs: 1000 }];
+      return [{ frame: img(a.drink, 'drink'), durationMs: 1000 }];
     case 'hungry':
       // No dedicated hungry face yet: base with blink cycle.
       return blink;
@@ -619,30 +629,76 @@ export default function AnimatedPet({
 
   const showZzz = action === 'sleep' || (action === 'idle' && mood === 'sleepy');
 
+  // BLINK FIX (Nov 23, 2026): the pet used to vanish for a split second on
+  // every frame change. Two causes, both fixed here by layered rendering:
+  //  (1) the old code conditionally rendered either a still <Image> or a
+  //      sheet <Image> inside an overflow-hidden window, so every
+  //      image<->panel switch UNMOUNTED one image and mounted another —
+  //      the new image was blank until it loaded/decoded (on web the
+  //      sprite sheets load on first use, mid-animation);
+  //  (2) on Android, every <Image> source change fades in from transparent
+  //      over the default fadeDuration of 300ms.
+  // Now ALL of the pet's frames are mounted from the first render — 7
+  // stills + 2 sheets — and a frame change only flips which layer has
+  // opacity 1. Nothing ever mounts, unmounts, or swaps src mid-animation,
+  // and fadeDuration={0} kills the native fade-in, so the pet is visible
+  // in every single frame on web, Android, and iOS.
+  const panel = frame.kind === 'panel' ? frame : null;
+  const activeLayer: LayerKey = frame.kind === 'image' ? frame.layer : frame.sheet;
+  const layers: {
+    key: LayerKey;
+    source: ImageSourcePropType;
+    sheet: boolean;
+    cols: number;
+    rows: number;
+  }[] = [
+    { key: 'base', source: assets.base, sheet: false, cols: 1, rows: 1 },
+    { key: 'blink', source: assets.blink, sheet: false, cols: 1, rows: 1 },
+    { key: 'eat', source: assets.eat, sheet: false, cols: 1, rows: 1 },
+    { key: 'drink', source: assets.drink, sheet: false, cols: 1, rows: 1 },
+    { key: 'happy', source: assets.happy, sheet: false, cols: 1, rows: 1 },
+    { key: 'sad', source: assets.sad, sheet: false, cols: 1, rows: 1 },
+    { key: 'sleep', source: assets.sleep, sheet: false, cols: 1, rows: 1 },
+    { key: 'expressions', source: assets.expressionsSheet, sheet: true, cols: 3, rows: 2 },
+    { key: 'actions', source: assets.actionsSheet, sheet: true, cols: 2, rows: 2 },
+  ];
+
   return (
     <View style={[styles.stage, { width: size, height: size }]}>
       <Animated.View style={[styles.sprite, { width: size, height: size }, animatedStyle]}>
-        {frame.kind === 'image' ? (
-          <Image
-            source={frame.source}
-            style={{ width: size, height: size }}
-            resizeMode="contain"
-          />
-        ) : (
-          <View style={{ width: size, height: size, overflow: 'hidden' }}>
-            <Image
-              source={frame.sheet}
+        {layers.map((layer) => {
+          const isActive = layer.key === activeLayer;
+          const isPanel = panel !== null && panel.sheet === layer.key;
+          return (
+            <View
+              key={layer.key}
               style={{
                 position: 'absolute',
-                width: size * frame.cols,
-                height: size * frame.rows,
-                left: -frame.col * size,
-                top: -frame.row * size,
+                width: size,
+                height: size,
+                overflow: 'hidden',
+                opacity: isActive ? 1 : 0,
               }}
-              resizeMode="stretch"
-            />
-          </View>
-        )}
+            >
+              <Image
+                source={layer.source}
+                fadeDuration={0}
+                style={
+                  layer.sheet
+                    ? {
+                        position: 'absolute',
+                        width: size * layer.cols,
+                        height: size * layer.rows,
+                        left: isPanel ? -panel.col * size : 0,
+                        top: isPanel ? -panel.row * size : 0,
+                      }
+                    : { width: size, height: size }
+                }
+                resizeMode={layer.sheet ? 'stretch' : 'contain'}
+              />
+            </View>
+          );
+        })}
       </Animated.View>
       {showZzz ? <FloatingZzz size={size} /> : null}
     </View>
