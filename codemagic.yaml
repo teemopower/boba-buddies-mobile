@@ -1,0 +1,124 @@
+# Boba Buddies — build the signed Android production AAB (versionCode 1) on Codemagic.
+#
+# Why this exists: the EAS free plan allows 15 Android + 15 iOS builds a
+# month, and the quota is exhausted until Dec 1, 2026. The GitHub Actions
+# backup is also unusable right now — GitHub refuses to start Actions jobs
+# on the teemopower account ("recent account payments have failed or your
+# spending limit needs to be increased"). Codemagic is the free backup:
+# 500 free Mac mini M2 minutes a month, no credit card required. This
+# workflow runs the same Gradle release build and signs with the release
+# keystore, so the AAB matches the Play listing's signing key.
+#
+# Manual trigger only — no `triggering` section means builds start only
+# from the Codemagic UI (Start new build) or API, never on push.
+# Nothing here submits to Google Play; the AAB is downloaded and submitted
+# by a human with the user's go-ahead.
+#
+# Required Codemagic setup (UI, once — parent agent does this in the browser):
+#   1. Sign in to Codemagic (GitHub SSO as teemopower) and add the
+#      teemopower/boba-buddies-mobile repo as an application.
+#   2. Team settings -> codemagic.yaml settings -> Code signing identities
+#      -> Android keystores: upload the release keystore with Reference
+#      name `boba-buddies-release-keystore`, and enter its store password,
+#      key alias and key password. THIS KEYSTORE DOES NOT EXIST YET: it must
+#      be generated (Codemagic can generate one in the UI, or keytool on a
+#      Mac) with a password the USER chooses — never invent one. The same
+#      keystore signs every future release of this app; keep it safe.
+#   3. In the app's settings, scan for this codemagic.yaml on branch master,
+#      then Start new build -> android-production-aab.
+#
+# Before the FIRST production build, RevenueCat must be configured:
+#   - Create the "Boba Buddies" RevenueCat project, link the Play app, import
+#     the 9 one-time products (see docs/payments.md for the price list) into
+#     the "pets" entitlement + the default offering, then set
+#     EXPO_PUBLIC_REVENUECAT_ANDROID_KEY as a Codemagic environment variable
+#     (Codemagic does not read eas.json). Until the key is set, the build
+#     still succeeds but the Pals tab reports "payments unconfigured" and
+#     pets cannot be bought.
+
+workflows:
+  android-production-aab:
+    name: Android production AAB (versionCode 1)
+    max_build_duration: 60
+    # Free plan: only mac_mini_m2 is available without billing enabled
+    # (linux_x2 / mac_mini_m4 / linux_x4 / windows_x2 all require billing).
+    # The 500 free minutes/month are Mac mini M2 minutes, and macOS
+    # machines can build Android — the Android SDK is preinstalled.
+    instance_type: mac_mini_m2
+    environment:
+      node: 24
+      java: 17
+      android_signing:
+        - boba-buddies-release-keystore
+      vars:
+        EXPO_NO_TELEMETRY: "1"
+    scripts:
+      - name: Install dependencies
+        script: |
+          npm ci
+
+      - name: Typecheck
+        script: |
+          npx tsc --noEmit
+
+      - name: Generate native Android project
+        script: |
+          npx expo prebuild --platform android --non-interactive
+
+      - name: Verify generated versionCode
+        script: |
+          grep -n "versionCode 1" android/app/build.gradle
+          grep -n 'versionName "1.0.0"' android/app/build.gradle
+
+      - name: Set Android SDK location
+        script: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/android/local.properties"
+
+      - name: Install Android platform and build tools
+        script: |
+          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
+          yes | sdkmanager --licenses
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - name: Wire release signing config
+        script: |
+          python3 scripts/ci/patch-android-signing.py
+
+      - name: Write keystore.properties from Codemagic signing env
+        # Codemagic exposes the uploaded keystore (reference
+        # `boba-buddies-release-keystore`) as CM_KEYSTORE_PATH,
+        # CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS and CM_KEY_PASSWORD.
+        script: |
+          printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+            "$CM_KEYSTORE_PATH" "$CM_KEYSTORE_PASSWORD" "$CM_KEY_ALIAS" "$CM_KEY_PASSWORD" \
+            > android/keystore.properties
+          chmod 600 android/keystore.properties
+
+      - name: Build release AAB
+        script: |
+          cd android
+          ./gradlew :app:bundleRelease --no-daemon --stacktrace
+
+      - name: Verify AAB (package + BILLING permission)
+        # Boba Buddies sells pets via Google Play Billing, so the AAB MUST
+        # declare com.android.vending.BILLING (opposite of Ocarina, which
+        # has no IAP). The base manifest inside the AAB stores its string
+        # pool as UTF-8 with this toolchain, so check both encodings.
+        script: |
+          python3 - <<'EOF'
+          import sys, zipfile
+          aab = 'android/app/build/outputs/bundle/release/app-release.aab'
+          with zipfile.ZipFile(aab) as z:
+              manifest = z.read('base/manifest/AndroidManifest.xml')
+          package = 'com.adaptationapps.bobabuddies'
+          if package.encode('utf-8') not in manifest and package.encode('utf-16-le') not in manifest:
+              print('ERROR: package com.adaptationapps.bobabuddies not found in AAB manifest', file=sys.stderr)
+              sys.exit(1)
+          billing = 'com.android.vending.BILLING'
+          if billing.encode('utf-8') not in manifest and billing.encode('utf-16-le') not in manifest:
+              print('ERROR: AAB does not declare BILLING permission — Boba Buddies sells pets via Play Billing', file=sys.stderr)
+              sys.exit(1)
+          print('OK: package com.adaptationapps.bobabuddies, BILLING permission present')
+          EOF
+    artifacts:
+      - android/app/build/outputs/bundle/release/app-release.aab

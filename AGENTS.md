@@ -25,14 +25,13 @@ Run lint and typecheck before declaring any task done.
 
 ## Navigation & Routing
 
-- Use **Expo Router** for all navigation. Routes live in `src/app/` — every file there is a screen, `_layout.tsx` files define navigators. Keep non-route code (components, hooks, utils) outside `src/app/`.
-- Import `Link`, `router`, and `useLocalSearchParams` from `expo-router`.
-- Docs: https://docs.expo.dev/router/introduction.md
+- This project uses **React Navigation** (bottom tabs + native stack), the same pattern as Punchslate — NOT Expo Router, despite the template text above. The 4 tabs (Room / Play / Shop / Pals) are a `createBottomTabNavigator` in `src/navigation/`.
+- Keep non-screen code (components, hooks, utils, game logic) outside the screens folder.
 
-## Building with EAS
+## Building with Codemagic
 
-Use EAS to build, sign, and submit the app in the cloud (`eas build`, `eas submit`) and to ship over-the-air updates (`eas update`) — no local Xcode or Android Studio required. Run EAS CLI as `bunx eas-cli <command>` in Bun projects, or `npx eas-cli@latest <command>` otherwise; substitute that for bare `eas` in docs examples.
-Docs: https://docs.expo.dev/eas/index.md
+- Do NOT use EAS: the free-plan build quota is exhausted until Dec 1, 2026, and GitHub Actions is blocked account-wide on a billing issue. Builds run on **Codemagic** via `codemagic.yaml` (manual trigger only, mac_mini_m2, free tier). See the header comments in `codemagic.yaml` for the one-time setup (Codemagic app + Android keystore — the keystore does not exist yet and needs a user-chosen password).
+- Nothing in this repo submits to Google Play or the App Store; the AAB is downloaded and submitted by a human with the user's go-ahead.
 
 ## Rules
 
