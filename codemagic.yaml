@@ -50,6 +50,11 @@ workflows:
       java: 17
       android_signing:
         - boba-buddies-release-keystore
+      # The RevenueCat public key (EXPO_PUBLIC_REVENUECAT_ANDROID_KEY) is
+      # stored in the Codemagic UI variable group "boba-buddies"; a group
+      # must be imported here for the workflow to receive it.
+      groups:
+        - boba-buddies
       vars:
         EXPO_NO_TELEMETRY: "1"
     scripts:
