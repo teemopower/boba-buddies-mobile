@@ -1,11 +1,10 @@
 /**
  * PetStage — renders the pet on the Room screen.
  *
- * Uses src/components/AnimatedPet when the active pet is one it supports
- * (Momo + Kiki only — AnimatedPet's PetId type is 'momo' | 'kiki').
- * Every other pet falls back to its base PNG in assets/pets/<id>.png
- * with a gentle Reanimated translateY bob, so the stage never renders
- * empty while the other 8 pets' animation support is still pending.
+ * Uses src/components/AnimatedPet for all 10 pets (Momo, Kiki, Boba,
+ * Yuki, Taro, Purin, Sora, Miso, Hana, Nori). The PngPet fallback below
+ * is kept only for unknown ids — it renders the base PNG with a gentle
+ * Reanimated translateY bob, so the stage never renders empty.
  *
  * The pet NEVER changes size (user rule): motion is translate/rotate
  * only, no scale transforms anywhere.
@@ -32,7 +31,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import AnimatedPet from './AnimatedPet';
-import type { MoodId as AnimMoodId, PetAction } from './AnimatedPet';
+import type { MoodId as AnimMoodId, PetAction, PetId } from './AnimatedPet';
 import { ppPetById } from '../game/logic';
 import type { MoodId } from '../game/logic';
 
@@ -70,8 +69,21 @@ function mapMood(mood: MoodId): AnimMoodId {
   return mood;
 }
 
-function isAnimatedPetId(petId: string): petId is 'momo' | 'kiki' {
-  return petId === 'momo' || petId === 'kiki';
+const ANIMATED_PET_IDS: readonly PetId[] = [
+  'momo',
+  'kiki',
+  'boba',
+  'yuki',
+  'taro',
+  'purin',
+  'sora',
+  'miso',
+  'hana',
+  'nori',
+];
+
+function isAnimatedPetId(petId: string): petId is PetId {
+  return (ANIMATED_PET_IDS as readonly string[]).includes(petId);
 }
 
 /** PNG fallback with a gentle bob (translateY only, never scale). */

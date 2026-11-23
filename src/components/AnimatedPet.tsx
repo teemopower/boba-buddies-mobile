@@ -1,8 +1,8 @@
 /**
  * AnimatedPet — animated virtual-pet sprite for Boba Buddies mobile.
  *
- * PROOF OF CONCEPT — Momo + Kiki only. Do not roll out to the other 8 pets
- * until this proof is verified.
+ * All 10 pets (Momo, Kiki, Boba, Yuki, Taro, Purin, Sora, Miso, Hana,
+ * Nori) share the same animation system, proven on Momo + Kiki first.
  *
  * Two layers:
  *  (a) Multi-frame sprite sequences (~8–12 fps feel): the base set is the
@@ -36,7 +36,17 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-export type PetId = 'momo' | 'kiki';
+export type PetId =
+  | 'momo'
+  | 'kiki'
+  | 'boba'
+  | 'yuki'
+  | 'taro'
+  | 'purin'
+  | 'sora'
+  | 'miso'
+  | 'hana'
+  | 'nori';
 
 /** Moods from DESIGN.md — every mood has its own animation + face. */
 export type MoodId =
@@ -130,6 +140,94 @@ const PET_ASSETS: Record<PetId, PetAssets> = {
     sleep: require('../../assets/pets/kiki-sleep.png'),
     expressionsSheet: require('../../assets/pets/kiki-expressions-sheet.png'),
     actionsSheet: require('../../assets/pets/kiki-actions-sheet.png'),
+  },
+  boba: {
+    base: require('../../assets/pets/boba.png'),
+    blink: require('../../assets/pets/boba-blink.png'),
+    eat: require('../../assets/pets/boba-eat.png'),
+    drink: require('../../assets/pets/boba-drink.png'),
+    happy: require('../../assets/pets/boba-happy.png'),
+    sad: require('../../assets/pets/boba-sad.png'),
+    sleep: require('../../assets/pets/boba-sleep.png'),
+    expressionsSheet: require('../../assets/pets/boba-expressions-sheet.png'),
+    actionsSheet: require('../../assets/pets/boba-actions-sheet.png'),
+  },
+  yuki: {
+    base: require('../../assets/pets/yuki.png'),
+    blink: require('../../assets/pets/yuki-blink.png'),
+    eat: require('../../assets/pets/yuki-eat.png'),
+    drink: require('../../assets/pets/yuki-drink.png'),
+    happy: require('../../assets/pets/yuki-happy.png'),
+    sad: require('../../assets/pets/yuki-sad.png'),
+    sleep: require('../../assets/pets/yuki-sleep.png'),
+    expressionsSheet: require('../../assets/pets/yuki-expressions-sheet.png'),
+    actionsSheet: require('../../assets/pets/yuki-actions-sheet.png'),
+  },
+  taro: {
+    base: require('../../assets/pets/taro.png'),
+    blink: require('../../assets/pets/taro-blink.png'),
+    eat: require('../../assets/pets/taro-eat.png'),
+    drink: require('../../assets/pets/taro-drink.png'),
+    happy: require('../../assets/pets/taro-happy.png'),
+    sad: require('../../assets/pets/taro-sad.png'),
+    sleep: require('../../assets/pets/taro-sleep.png'),
+    expressionsSheet: require('../../assets/pets/taro-expressions-sheet.png'),
+    actionsSheet: require('../../assets/pets/taro-actions-sheet.png'),
+  },
+  purin: {
+    base: require('../../assets/pets/purin.png'),
+    blink: require('../../assets/pets/purin-blink.png'),
+    eat: require('../../assets/pets/purin-eat.png'),
+    drink: require('../../assets/pets/purin-drink.png'),
+    happy: require('../../assets/pets/purin-happy.png'),
+    sad: require('../../assets/pets/purin-sad.png'),
+    sleep: require('../../assets/pets/purin-sleep.png'),
+    expressionsSheet: require('../../assets/pets/purin-expressions-sheet.png'),
+    actionsSheet: require('../../assets/pets/purin-actions-sheet.png'),
+  },
+  sora: {
+    base: require('../../assets/pets/sora.png'),
+    blink: require('../../assets/pets/sora-blink.png'),
+    eat: require('../../assets/pets/sora-eat.png'),
+    drink: require('../../assets/pets/sora-drink.png'),
+    happy: require('../../assets/pets/sora-happy.png'),
+    sad: require('../../assets/pets/sora-sad.png'),
+    sleep: require('../../assets/pets/sora-sleep.png'),
+    expressionsSheet: require('../../assets/pets/sora-expressions-sheet.png'),
+    actionsSheet: require('../../assets/pets/sora-actions-sheet.png'),
+  },
+  miso: {
+    base: require('../../assets/pets/miso.png'),
+    blink: require('../../assets/pets/miso-blink.png'),
+    eat: require('../../assets/pets/miso-eat.png'),
+    drink: require('../../assets/pets/miso-drink.png'),
+    happy: require('../../assets/pets/miso-happy.png'),
+    sad: require('../../assets/pets/miso-sad.png'),
+    sleep: require('../../assets/pets/miso-sleep.png'),
+    expressionsSheet: require('../../assets/pets/miso-expressions-sheet.png'),
+    actionsSheet: require('../../assets/pets/miso-actions-sheet.png'),
+  },
+  hana: {
+    base: require('../../assets/pets/hana.png'),
+    blink: require('../../assets/pets/hana-blink.png'),
+    eat: require('../../assets/pets/hana-eat.png'),
+    drink: require('../../assets/pets/hana-drink.png'),
+    happy: require('../../assets/pets/hana-happy.png'),
+    sad: require('../../assets/pets/hana-sad.png'),
+    sleep: require('../../assets/pets/hana-sleep.png'),
+    expressionsSheet: require('../../assets/pets/hana-expressions-sheet.png'),
+    actionsSheet: require('../../assets/pets/hana-actions-sheet.png'),
+  },
+  nori: {
+    base: require('../../assets/pets/nori.png'),
+    blink: require('../../assets/pets/nori-blink.png'),
+    eat: require('../../assets/pets/nori-eat.png'),
+    drink: require('../../assets/pets/nori-drink.png'),
+    happy: require('../../assets/pets/nori-happy.png'),
+    sad: require('../../assets/pets/nori-sad.png'),
+    sleep: require('../../assets/pets/nori-sleep.png'),
+    expressionsSheet: require('../../assets/pets/nori-expressions-sheet.png'),
+    actionsSheet: require('../../assets/pets/nori-actions-sheet.png'),
   },
 };
 
