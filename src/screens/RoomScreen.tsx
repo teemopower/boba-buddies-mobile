@@ -102,7 +102,7 @@ export default function RoomScreen() {
   let sub = stageName + (isSparkle ? ' ✨ Sparkle' : '') + ' · Day ' + days;
   if (stageIndex === 0) {
     const msLeft = ppHatchInMs(state, now);
-    sub += msLeft > 10000 ? ' · hatches in ' + Math.ceil(msLeft / 60000) + ' min' : ' · hatching any second… 🐣';
+    sub += msLeft > 5000 ? ' · hatches in ' + Math.ceil(msLeft / 1000) + 's' : ' · hatching any second… 🐣';
   } else if (stageIndex < PP.STAGES.length - 1) {
     sub += ' · next: ' + PP.STAGES[stageIndex + 1] + ' tomorrow';
   }

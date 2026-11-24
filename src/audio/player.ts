@@ -1,10 +1,11 @@
 /**
  * Boba Buddies Mobile — audio player service (expo-audio, SDK 58).
  *
- * Plays the synthesized music loops in `assets/audio/` (rendered by
- * `scripts/audio/synth.mjs` — 100% original, no downloaded audio) and the
- * short sound effects, with music mode switching, a music on/off toggle,
- * and a master mute, both persisted in AsyncStorage.
+ * Plays the background music loop in `assets/audio/` (Morning Meadow —
+ * an original music-box loop rendered by `music-samples/render_loop.py`,
+ * 100% original, no downloaded audio) and the short sound effects, with
+ * music mode switching, a music on/off toggle, and a master mute, both
+ * persisted in AsyncStorage.
  *
  * API verified against the installed expo-audio 58.0.12 typings
  * (node_modules/expo-audio/build/*.d.ts):
@@ -66,12 +67,14 @@ const SFX_VOLUME = 0.9;
 /** Max simultaneous SFX players — extra plays drop the oldest, never clip. */
 const MAX_CONCURRENT_SFX = 8;
 
-/** Bundled music loops. `require` returns the Metro asset id (a number),
- * which expo-audio accepts as an AudioSource. */
+/** Bundled music loop. Morning Meadow plays in every mode (daytime /
+ * lullaby / playtime all use the same track — picked by the user Nov 23,
+ * 2026, replacing the three synthesized loops). `require` returns the
+ * Metro asset id (a number), which expo-audio accepts as an AudioSource. */
 const MUSIC_SOURCES: Record<MusicMode, number> = {
-  daytime: require('../../assets/audio/music-daytime.wav'),
-  lullaby: require('../../assets/audio/music-lullaby.wav'),
-  playtime: require('../../assets/audio/music-playtime.wav'),
+  daytime: require('../../assets/audio/music-morning-meadow.wav'),
+  lullaby: require('../../assets/audio/music-morning-meadow.wav'),
+  playtime: require('../../assets/audio/music-morning-meadow.wav'),
 };
 
 const SFX_SOURCES: Record<SfxName, number> = {

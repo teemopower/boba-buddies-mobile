@@ -132,9 +132,9 @@ export const PP = {
   HEALTH_RECOVER_PER_HOUR: 1,
   HEALTH_DAMAGE_PER_HOUR: 2,
 
-  // Growth (v1.0): the egg hatches in 5 minutes, then 1 real day = 1 stage step.
-  // Egg -> Baby (5 min) -> Child (1 day after hatch) -> Teen (2 days) -> Adult (3 days).
-  EGG_MS: 5 * 60 * 1000,
+  // Growth: the egg hatches in 30 seconds, then 1 real day = 1 stage step.
+  // Egg -> Baby (30 s) -> Child (1 day after hatch) -> Teen (2 days) -> Adult (3 days).
+  EGG_MS: 30 * 1000,
   STAGES: ['Egg', 'Baby', 'Child', 'Teen', 'Adult'],
 
   PETS: [
@@ -266,7 +266,7 @@ export function ppAgeDays(state: PetState, now: number): number {
 }
 
 /** Growth stage index 0..4 (Egg..Adult).
- * v1.0: the egg hatches 5 minutes after adoption, then 1 day = 1 step
+ * The egg hatches 30 seconds after adoption, then 1 day = 1 step
  * (Baby on the hatch day, Child 1 day after hatch, Teen 2 days, Adult 3 days). */
 export function ppStageIndex(state: PetState, now: number): number {
   const elapsed = now - state.bornAt;
