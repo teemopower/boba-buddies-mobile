@@ -54,7 +54,13 @@ export default function AppNavigator({ initialRouteName }: { initialRouteName?: 
           },
           tabBarActiveTintColor: COLORS.brand,
           tabBarInactiveTintColor: COLORS.muted,
-          tabBarLabelStyle: { fontSize: 11, fontWeight: '700' },
+          // lineHeight is required: on web (react-native-web) the label's
+          // line box collapses to ~10px and clips descenders ("Play" read
+          // as "Plav" in listing screenshots). On native the font's natural
+          // line height already gives descenders room; 14px is identical
+          // there and fixes web. flexShrink: 0 stops the tab item's column
+          // flex layout from squeezing the label below its line height.
+          tabBarLabelStyle: { fontSize: 11, fontWeight: '700', lineHeight: 14, flexShrink: 0 },
         })}
       >
         <Tab.Screen name="Room" component={RoomScreen} options={{ tabBarLabel: 'Room' }} />
