@@ -1,11 +1,12 @@
 /**
  * Boba Buddies Mobile — audio player service (expo-audio, SDK 58).
  *
- * Plays the background music loop in `assets/audio/` (Morning Meadow —
- * an original music-box loop rendered by `music-samples/render_loop.py`,
- * 100% original, no downloaded audio) and the short sound effects, with
- * music mode switching, a music on/off toggle, and a master mute, both
- * persisted in AsyncStorage.
+ * Plays the background music loop in `assets/audio/` (Cozy Hearth —
+ * an original music-box waltz loop rendered by
+ * `music-samples/render_loop_cozy.py`, 100% original, no downloaded
+ * audio) and the short sound effects, with music mode switching, a
+ * music on/off toggle, and a master mute, both persisted in AsyncStorage.
+ * Cozy Hearth replaced Morning Meadow on Nov 24, 2026 (user pick).
  *
  * API verified against the installed expo-audio 58.0.12 typings
  * (node_modules/expo-audio/build/*.d.ts):
@@ -67,14 +68,14 @@ const SFX_VOLUME = 0.9;
 /** Max simultaneous SFX players — extra plays drop the oldest, never clip. */
 const MAX_CONCURRENT_SFX = 8;
 
-/** Bundled music loop. Morning Meadow plays in every mode (daytime /
- * lullaby / playtime all use the same track — picked by the user Nov 23,
- * 2026, replacing the three synthesized loops). `require` returns the
- * Metro asset id (a number), which expo-audio accepts as an AudioSource. */
+/** Bundled music loop. Cozy Hearth plays in every mode (daytime /
+ * lullaby / playtime all use the same track — picked by the user Nov 24,
+ * 2026, replacing Morning Meadow). `require` returns the Metro asset id
+ * (a number), which expo-audio accepts as an AudioSource. */
 const MUSIC_SOURCES: Record<MusicMode, number> = {
-  daytime: require('../../assets/audio/music-morning-meadow.wav'),
-  lullaby: require('../../assets/audio/music-morning-meadow.wav'),
-  playtime: require('../../assets/audio/music-morning-meadow.wav'),
+  daytime: require('../../assets/audio/music-cozy-hearth.wav'),
+  lullaby: require('../../assets/audio/music-cozy-hearth.wav'),
+  playtime: require('../../assets/audio/music-cozy-hearth.wav'),
 };
 
 const SFX_SOURCES: Record<SfxName, number> = {

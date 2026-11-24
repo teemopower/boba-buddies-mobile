@@ -5,14 +5,19 @@
  * Nori) share the same animation system, proven on Momo + Kiki first.
  *
  * Two layers:
- *  (a) Multi-frame sprite sequences (~8–12 fps feel): the base set is the
- *      per-pet stills in assets/pets/ (base / blink / eat / drink / happy /
- *      sad / sleep). New expression + action panels come from the sprite
- *      sheets (momo/kiki-expressions-sheet.png, 3x2 grid of 640px panels;
+ *  (a) Multi-frame sprite sequences: the base set is the per-pet stills
+ *      in assets/pets/ (base / blink / eat / drink / happy / sad / sleep).
+ *      New expression + action panels come from the sprite sheets
+ *      (momo/kiki-expressions-sheet.png, 3x2 grid of 640px panels;
  *      momo/kiki-actions-sheet.png, 2x2 grid of 800px panels). Sheets are
  *      sliced in code — an overflow-hidden window shows one panel of the
- *      sheet at a time, so no pre-sliced files are needed.
+ *      sheet at a time, so no pre-sliced files are needed. Every frame
+ *      change crossfades into the next over 80 ms (see PetLayer), so the
+ *      eye sees an interpolated in-between frame between every pair of
+ *      drawings — the motion reads fluid, like a cartoon.
  *  (b) Smooth code-driven motion at 60fps via react-native-reanimated.
+ *      The 'walk' action is driven by PetStage's wander: the pet drifts
+ *      around the room on its own, using the existing art.
  *
  * HARD RULE (user preference): the pet NEVER changes size. No
  * squash-and-stretch, no scale transforms anywhere — eating animates the
@@ -23,7 +28,7 @@
  * frame and restarts the motion profile from neutral (no stuck frames).
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import type { ImageSourcePropType } from 'react-native';
 import Animated, {
@@ -31,9 +36,11 @@ import Animated, {
   cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withRepeat,
   withSequence,
   withTiming,
+  type SharedValue,
 } from 'react-native-reanimated';
 
 export type PetId =
@@ -68,13 +75,15 @@ export type PetAction =
   | 'idle'
   | 'eat'
   | 'drink'
+  | 'bath'
   | 'sleep'
   | 'play'
   | 'sick'
   | 'tantrum'
   | 'potty'
   | 'celebrate'
-  | 'lonely';
+  | 'lonely'
+  | 'walk';
 
 export interface AnimatedPetProps {
   petId: PetId;
@@ -286,7 +295,16 @@ const img = (source: ImageSourcePropType, layer: StillKey): Frame => ({
 /**
  * Resolve the frame sequence for a (mood, action) pair. Action wins when it
  * is not 'idle'; otherwise the mood picks the idle face. Every sequence is
- * short and loops; durations give the ~8–12 fps feel for the chew cycle.
+ * short and loops.
+ *
+ * SMOOTHNESS (Nov 24, 2026): steps run at ~100–260 ms (roughly 4–10
+ * steps/s) and every step change crossfades into the next frame over
+ * CROSSFADE_MS via the layered renderer below, so the eye sees an
+ * interpolated in-between frame between every pair of drawings — the
+ * motion reads fluid, like a cartoon, instead of hard-cutting between
+ * stills. Sequences use as many distinct drawings as the art has (the
+ * chew cycle, for example, is base → chew-mid → chew-open → chew-mid →
+ * base, not just two frames).
  */
 function resolveSequence(a: PetAssets, mood: MoodId, action: PetAction): SeqStep[] {
   const p = sheetPanels(a);
@@ -301,40 +319,61 @@ function resolveSequence(a: PetAssets, mood: MoodId, action: PetAction): SeqStep
       case 'eat':
         // Chew cycle — mouth only, body never changes size.
         return [
-          { frame: base, durationMs: 220 },
-          { frame: p.chewMid, durationMs: 220 },
-          { frame: p.chewOpen, durationMs: 220 },
-          { frame: p.chewMid, durationMs: 220 },
+          { frame: base, durationMs: 100 },
+          { frame: p.chewMid, durationMs: 100 },
+          { frame: p.chewOpen, durationMs: 100 },
+          { frame: p.chewMid, durationMs: 100 },
+          { frame: base, durationMs: 100 },
         ];
       case 'drink':
         // Sip loop: drink frame, brief return to base (gulp).
         return [
-          { frame: img(a.drink, 'drink'), durationMs: 1000 },
-          { frame: base, durationMs: 300 },
+          { frame: img(a.drink, 'drink'), durationMs: 800 },
+          { frame: base, durationMs: 250 },
+        ];
+      case 'bath':
+        // Scrub cycle — happy face alternating with base while the pet
+        // wiggles (see 'scrub' motion) under floating soap bubbles.
+        // Added Nov 24, 2026: Bath previously played no animation at all
+        // (RoomScreen reset the action to 'idle'); parity with the
+        // extension, which wiggles the sprite + shows 🫧 bubbles.
+        return [
+          { frame: img(a.happy, 'happy'), durationMs: 180 },
+          { frame: base, durationMs: 180 },
+          { frame: p.excited, durationMs: 180 },
         ];
       case 'sleep':
         return [{ frame: img(a.sleep, 'sleep'), durationMs: 1000 }];
       case 'play':
         return [
-          { frame: base, durationMs: 300 },
-          { frame: img(a.happy, 'happy'), durationMs: 300 },
+          { frame: base, durationMs: 160 },
+          { frame: img(a.happy, 'happy'), durationMs: 160 },
+          { frame: p.excited, durationMs: 160 },
         ];
       case 'sick':
         return [{ frame: p.sick, durationMs: 1000 }];
       case 'tantrum':
         return [
-          { frame: p.tantrum, durationMs: 260 },
-          { frame: p.grumpy, durationMs: 260 },
+          { frame: p.tantrum, durationMs: 160 },
+          { frame: p.grumpy, durationMs: 160 },
         ];
       case 'potty':
         return [{ frame: p.potty, durationMs: 1000 }];
       case 'celebrate':
         return [
-          { frame: p.celebrate, durationMs: 450 },
-          { frame: img(a.happy, 'happy'), durationMs: 450 },
+          { frame: p.celebrate, durationMs: 220 },
+          { frame: p.excited, durationMs: 220 },
+          { frame: img(a.happy, 'happy'), durationMs: 220 },
         ];
       case 'lonely':
         return [{ frame: p.lonely, durationMs: 1000 }];
+      case 'walk':
+        // Wandering waddle — face bobs between base and happy while the
+        // stage drifts the pet across the room (see PetStage wander).
+        return [
+          { frame: base, durationMs: 140 },
+          { frame: img(a.happy, 'happy'), durationMs: 140 },
+        ];
       default:
         return blink;
     }
@@ -342,9 +381,15 @@ function resolveSequence(a: PetAssets, mood: MoodId, action: PetAction): SeqStep
 
   switch (mood) {
     case 'happy':
-      return [{ frame: img(a.happy, 'happy'), durationMs: 1000 }];
+      return [
+        { frame: img(a.happy, 'happy'), durationMs: 400 },
+        { frame: p.excited, durationMs: 400 },
+      ];
     case 'excited':
-      return [{ frame: p.excited, durationMs: 1000 }];
+      return [
+        { frame: p.excited, durationMs: 300 },
+        { frame: img(a.happy, 'happy'), durationMs: 300 },
+      ];
     case 'sick':
       return [{ frame: p.sick, durationMs: 1000 }];
     case 'sad':
@@ -408,6 +453,7 @@ type MotionProfile =
   | 'stomp'
   | 'deepBob'
   | 'wiggle'
+  | 'scrub'
   | 'sway'
   | 'nibble'
   | 'still';
@@ -418,6 +464,10 @@ function resolveMotion(mood: MoodId, action: PetAction): MotionProfile {
       case 'eat':
         return 'nibble';
       case 'drink':
+        return 'breathe';
+      case 'bath':
+        return 'scrub';
+      case 'walk':
         return 'breathe';
       case 'sleep':
         return 'deepBob';
@@ -497,6 +547,202 @@ function FloatingZzz({ size }: { size: number }) {
   return (
     <Animated.View style={[styles.zzz, { right: size * 0.06, top: -size * 0.02 }, style]}>
       <Text style={[styles.zzzText, { fontSize: size * 0.14 }]}>Zzz</Text>
+    </Animated.View>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Floating soap bubbles (bath action)                                 */
+/* ------------------------------------------------------------------ */
+
+/** One bubble rising and fading on a loop, offset by `delayMs`. */
+function Bubble({
+  size,
+  leftPct,
+  topPct,
+  fontSize,
+  delayMs,
+}: {
+  size: number;
+  leftPct: number;
+  topPct: number;
+  fontSize: number;
+  delayMs: number;
+}) {
+  const rise = useSharedValue(0);
+  const fade = useSharedValue(0);
+
+  useEffect(() => {
+    // Rise ~14px over 1.4s while fading in, holding, then fading out;
+    // the zero-duration reset at the end is invisible (opacity 0).
+    // Matches the extension's `.bath-bubbles span` floaty 1.4s loop.
+    rise.value = withRepeat(
+      withSequence(
+        withDelay(delayMs, withTiming(-14, { duration: 1400, easing: Easing.inOut(Easing.ease) })),
+        withTiming(0, { duration: 0 }),
+      ),
+      -1,
+    );
+    fade.value = withRepeat(
+      withSequence(
+        withDelay(delayMs, withTiming(1, { duration: 250 })),
+        withTiming(1, { duration: 700 }),
+        withTiming(0, { duration: 450 }),
+        withTiming(0, { duration: 200 }),
+      ),
+      -1,
+    );
+    return () => {
+      cancelAnimation(rise);
+      cancelAnimation(fade);
+    };
+  }, [rise, fade, delayMs]);
+
+  const style = useAnimatedStyle(() => ({
+    opacity: fade.value,
+    transform: [{ translateY: rise.value }],
+  }));
+
+  return (
+    <Animated.View
+      style={[
+        styles.bubble,
+        { left: `${leftPct}%`, top: `${topPct}%` },
+        style,
+      ]}
+    >
+      <Text style={{ fontSize }}>🫧</Text>
+    </Animated.View>
+  );
+}
+
+function FloatingBubbles({ size }: { size: number }) {
+  return (
+    <View style={styles.bubbles} pointerEvents="none">
+      <Bubble size={size} leftPct={14} topPct={58} fontSize={size * 0.09} delayMs={0} />
+      <Bubble size={size} leftPct={52} topPct={38} fontSize={size * 0.11} delayMs={450} />
+      <Bubble size={size} leftPct={74} topPct={62} fontSize={size * 0.08} delayMs={900} />
+      <Bubble size={size} leftPct={32} topPct={22} fontSize={size * 0.09} delayMs={200} />
+    </View>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Crossfaded layer rendering (Nov 24, 2026)                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * How long one frame blends into the next. Every frame change crossfades
+ * the outgoing layer out and the incoming layer in over this long, so the
+ * eye sees an interpolated in-between frame between every pair of
+ * drawings — that is what makes the animation read fluid, like a cartoon,
+ * instead of hard-cutting between stills. Kept just under the shortest
+ * sequence step (eat, 100 ms) so blends never queue up.
+ */
+const CROSSFADE_MS = 80;
+
+type PanelPos = { col: number; row: number } | null;
+
+interface PetLayerProps {
+  size: number;
+  source: ImageSourcePropType;
+  sheet: boolean;
+  cols: number;
+  rows: number;
+  isActive: boolean;
+  isPrev: boolean;
+  /** Current panel offset on this sheet (null when the active frame is
+   *  not a panel of this sheet). */
+  panel: PanelPos;
+  /** Previous panel offset on this sheet (for crossfading two panels of
+   *  the same sheet). */
+  prevPanel: PanelPos;
+  /** Shared 0→1 progress of the current crossfade. */
+  fade: SharedValue<number>;
+}
+
+/**
+ * One always-mounted layer (a still, or one sprite sheet). A frame change
+ * never mounts, unmounts, or swaps an image src — it only animates
+ * opacities (the Nov 23 blink fix, kept), and now the outgoing layer
+ * fades out while the incoming layer fades in instead of flipping
+ * instantly. When the outgoing and incoming frames are two panels of
+ * the SAME sheet, the sheet is rendered twice at different offsets, one
+ * fading out and one fading in.
+ */
+function PetLayer({
+  size,
+  source,
+  sheet,
+  cols,
+  rows,
+  isActive,
+  isPrev,
+  panel,
+  prevPanel,
+  fade,
+}: PetLayerProps) {
+  const mainStyle = useAnimatedStyle(() => ({
+    opacity: isActive ? fade.value : isPrev ? 1 - fade.value : 0,
+  }));
+  const prevStyle = useAnimatedStyle(() => ({ opacity: 1 - fade.value }));
+  const currStyle = useAnimatedStyle(() => ({ opacity: fade.value }));
+
+  const windowStyle = {
+    position: 'absolute' as const,
+    width: size,
+    height: size,
+    overflow: 'hidden' as const,
+  };
+  const sheetImageStyle = (col: number, row: number) => ({
+    position: 'absolute' as const,
+    width: size * cols,
+    height: size * rows,
+    left: -col * size,
+    top: -row * size,
+  });
+
+  if (
+    sheet &&
+    panel &&
+    prevPanel &&
+    (panel.col !== prevPanel.col || panel.row !== prevPanel.row)
+  ) {
+    return (
+      <View style={windowStyle}>
+        <Animated.View style={[StyleSheet.absoluteFill, prevStyle]}>
+          <Image
+            source={source}
+            fadeDuration={0}
+            style={sheetImageStyle(prevPanel.col, prevPanel.row)}
+            resizeMode="stretch"
+          />
+        </Animated.View>
+        <Animated.View style={[StyleSheet.absoluteFill, currStyle]}>
+          <Image
+            source={source}
+            fadeDuration={0}
+            style={sheetImageStyle(panel.col, panel.row)}
+            resizeMode="stretch"
+          />
+        </Animated.View>
+      </View>
+    );
+  }
+
+  const offset = panel ?? prevPanel;
+  return (
+    <Animated.View style={[windowStyle, mainStyle]}>
+      <Image
+        source={source}
+        fadeDuration={0}
+        style={
+          sheet
+            ? sheetImageStyle(offset?.col ?? 0, offset?.row ?? 0)
+            : { width: size, height: size }
+        }
+        resizeMode={sheet ? 'stretch' : 'contain'}
+      />
     </Animated.View>
   );
 }
@@ -596,6 +842,18 @@ export default function AnimatedPet({
           -1,
         );
         break;
+      case 'scrub':
+        // Bath scrub-wiggle: rapid small side-to-side scrub, mirroring
+        // the extension's `scrub-wiggle .28s` CSS animation.
+        translateX.value = withRepeat(
+          withSequence(
+            withTiming(-4, { duration: 140, easing: inOut }),
+            withTiming(4, { duration: 280, easing: inOut }),
+            withTiming(-4, { duration: 140, easing: inOut }),
+          ),
+          -1,
+        );
+        break;
       case 'sway':
         // Lonely / bored slow sway, rotate ±2°.
         rotation.value = withRepeat(
@@ -629,6 +887,28 @@ export default function AnimatedPet({
 
   const showZzz = action === 'sleep' || (action === 'idle' && mood === 'sleepy');
 
+  // CROSSFADE (Nov 24, 2026): when the frame changes, keep the outgoing
+  // frame mounted as `prevFrame` and animate `fade` 0→1 over
+  // CROSSFADE_MS — PetLayer fades the old layer out while the new one
+  // fades in. The blink fix still holds: nothing ever mounts, unmounts,
+  // or swaps src mid-animation, and fadeDuration={0} kills the native
+  // fade-in, so the pet is visible in every single frame.
+  const [prevFrame, setPrevFrame] = useState<Frame | null>(null);
+  const fade = useSharedValue(1);
+  const frameRef = useRef(frame);
+  useEffect(() => {
+    if (frameRef.current !== frame) {
+      const old = frameRef.current;
+      frameRef.current = frame;
+      setPrevFrame(old);
+      fade.value = 0;
+      fade.value = withTiming(1, { duration: CROSSFADE_MS });
+      const t = setTimeout(() => setPrevFrame(null), CROSSFADE_MS + 30);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [frame, fade]);
+
   // BLINK FIX (Nov 23, 2026): the pet used to vanish for a split second on
   // every frame change. Two causes, both fixed here by layered rendering:
   //  (1) the old code conditionally rendered either a still <Image> or a
@@ -643,8 +923,16 @@ export default function AnimatedPet({
   // opacity 1. Nothing ever mounts, unmounts, or swaps src mid-animation,
   // and fadeDuration={0} kills the native fade-in, so the pet is visible
   // in every single frame on web, Android, and iOS.
-  const panel = frame.kind === 'panel' ? frame : null;
+  const panel: PanelPos =
+    frame.kind === 'panel' ? { col: frame.col, row: frame.row } : null;
+  const prevPanel: PanelPos =
+    prevFrame?.kind === 'panel' ? { col: prevFrame.col, row: prevFrame.row } : null;
   const activeLayer: LayerKey = frame.kind === 'image' ? frame.layer : frame.sheet;
+  const prevLayer: LayerKey | null = prevFrame
+    ? prevFrame.kind === 'image'
+      ? prevFrame.layer
+      : prevFrame.sheet
+    : null;
   const layers: {
     key: LayerKey;
     source: ImageSourcePropType;
@@ -666,41 +954,24 @@ export default function AnimatedPet({
   return (
     <View style={[styles.stage, { width: size, height: size }]}>
       <Animated.View style={[styles.sprite, { width: size, height: size }, animatedStyle]}>
-        {layers.map((layer) => {
-          const isActive = layer.key === activeLayer;
-          const isPanel = panel !== null && panel.sheet === layer.key;
-          return (
-            <View
-              key={layer.key}
-              style={{
-                position: 'absolute',
-                width: size,
-                height: size,
-                overflow: 'hidden',
-                opacity: isActive ? 1 : 0,
-              }}
-            >
-              <Image
-                source={layer.source}
-                fadeDuration={0}
-                style={
-                  layer.sheet
-                    ? {
-                        position: 'absolute',
-                        width: size * layer.cols,
-                        height: size * layer.rows,
-                        left: isPanel ? -panel.col * size : 0,
-                        top: isPanel ? -panel.row * size : 0,
-                      }
-                    : { width: size, height: size }
-                }
-                resizeMode={layer.sheet ? 'stretch' : 'contain'}
-              />
-            </View>
-          );
-        })}
+        {layers.map((layer) => (
+          <PetLayer
+            key={layer.key}
+            size={size}
+            source={layer.source}
+            sheet={layer.sheet}
+            cols={layer.cols}
+            rows={layer.rows}
+            isActive={layer.key === activeLayer}
+            isPrev={layer.key === prevLayer}
+            panel={layer.key === activeLayer ? panel : null}
+            prevPanel={layer.key === prevLayer ? prevPanel : null}
+            fade={fade}
+          />
+        ))}
       </Animated.View>
       {showZzz ? <FloatingZzz size={size} /> : null}
+      {action === 'bath' ? <FloatingBubbles size={size} /> : null}
     </View>
   );
 }
@@ -720,5 +991,15 @@ const styles = StyleSheet.create({
   zzzText: {
     color: '#7C9EB2',
     fontWeight: 'bold',
+  },
+  bubbles: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+  },
+  bubble: {
+    position: 'absolute',
   },
 });

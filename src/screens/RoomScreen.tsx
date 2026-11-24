@@ -143,7 +143,7 @@ export default function RoomScreen() {
     bath();
     say(ACTION_BUBBLES.bath);
     audioPlayer.playSfx('scrub');
-    playAction('idle');
+    playAction('bath', 1800);
   };
   const doMedicine = () => {
     if (mood !== 'sick' || save.coins < 10) return;
@@ -251,6 +251,7 @@ export default function RoomScreen() {
                 isSparkle={isSparkle}
                 onPress={doPet}
                 testID="pet-stage"
+                wander
               />
             </View>
             {state.pottyPending && <Text style={styles.pottyBadge}>🚽</Text>}

@@ -18,12 +18,19 @@
  *   hatOn      — Pink Bow equipped (hat sits on the head via headTop)
  *   isSparkle  — sparkle adult form
  *   onPress    — tap the pet to give it a pat
+ *   wander     — when true (Room screen), the pet wanders the room on its
+ *     own: drifts left/right, pauses, turns around. Code-driven movement
+ *     using the existing art (translate/rotate only, never scale — the
+ *     pet leans into the walk and waddles; it does not flip, so it never
+ *     changes size or mirrors). Pauses while sleeping, sick, sleepy, or
+ *     during a one-shot action, and drifts back to centre first.
  */
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text } from 'react-native';
 import type { ImageSourcePropType } from 'react-native';
 import Animated, {
   Easing,
+  cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -47,7 +54,12 @@ export interface PetStageProps {
   isSparkle?: boolean;
   onPress?: () => void;
   testID?: string;
+  /** Let the pet wander the room on its own (Room screen only). */
+  wander?: boolean;
 }
+
+/** How far (px) the pet drifts left/right of centre while wandering. */
+const WANDER_RANGE = 64;
 
 /** Static image map — Metro requires literal require() calls. */
 export const PET_IMAGES: Record<string, ImageSourcePropType> = {
@@ -122,11 +134,107 @@ export default function PetStage({
   isSparkle = false,
   onPress,
   testID,
+  wander = false,
 }: PetStageProps) {
   const pet = ppPetById(petId);
   const isEgg = stageIndex === 0;
   // Hat sits on the head: sprite top + headTop fraction of the sprite.
   const hatTop = Math.max(0, size * (pet.headTop || 0.03) - 14);
+
+  // -- Wander (Nov 24, 2026) -------------------------------------------
+  // The pet drifts around the room on its own: pause, pick a spot within
+  // ±WANDER_RANGE, lean into the walk and waddle over, pause again.
+  // Only while idle, awake, and well; any one-shot action, sleep, or
+  // sickness pauses it and drifts the pet back to centre first. No flip:
+  // the pet never mirrors (that would be a scale transform, banned by
+  // the user rule) — direction reads from the lean + drift instead, and
+  // a quick tilt sway marks the turn-around.
+  const wanderX = useSharedValue(0);
+  const wanderBob = useSharedValue(0);
+  const wanderTilt = useSharedValue(0);
+  const [wandering, setWandering] = useState(false);
+  const wanderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wanderPos = useRef(0);
+
+  const canWander =
+    wander &&
+    !isEgg &&
+    action === 'idle' &&
+    mood !== 'sleeping' &&
+    mood !== 'sleepy' &&
+    mood !== 'sick';
+
+  // Stop wandering the moment it is no longer allowed — reset during
+  // render (React's "adjusting state during render" pattern, same as
+  // useFrameSequence in AnimatedPet); the effect below handles the
+  // timers and shared values.
+  if (!canWander && wandering) {
+    setWandering(false);
+  }
+
+  useEffect(() => {
+    if (!canWander) {
+      if (wanderTimer.current) clearTimeout(wanderTimer.current);
+      cancelAnimation(wanderX);
+      cancelAnimation(wanderBob);
+      cancelAnimation(wanderTilt);
+      wanderX.value = withTiming(0, { duration: 400 });
+      wanderBob.value = 0;
+      wanderTilt.value = 0;
+      wanderPos.current = 0;
+      return undefined;
+    }
+    let cancelled = false;
+    const scheduleNext = (delayMs: number) => {
+      wanderTimer.current = setTimeout(() => {
+        if (cancelled) return;
+        const target = (Math.random() * 2 - 1) * WANDER_RANGE;
+        const from = wanderPos.current;
+        const dir = target >= from ? 1 : -1;
+        const dur = 1200 + Math.random() * 1300;
+        setWandering(true);
+        // Lean into the walk, waddle-bob while moving, drift over.
+        wanderTilt.value = withTiming(dir * 4, {
+          duration: 300,
+          easing: Easing.inOut(Easing.ease),
+        });
+        wanderBob.value = withRepeat(
+          withTiming(-3, { duration: 280, easing: Easing.inOut(Easing.ease) }),
+          -1,
+          true,
+        );
+        wanderX.value = withTiming(target, {
+          duration: dur,
+          easing: Easing.inOut(Easing.ease),
+        });
+        wanderPos.current = target;
+        wanderTimer.current = setTimeout(() => {
+          if (cancelled) return;
+          setWandering(false);
+          cancelAnimation(wanderBob);
+          wanderBob.value = 0;
+          wanderTilt.value = withTiming(0, { duration: 300 });
+          scheduleNext(1500 + Math.random() * 2500);
+        }, dur + 60);
+      }, delayMs);
+    };
+    scheduleNext(1200 + Math.random() * 1800);
+    return () => {
+      cancelled = true;
+      if (wanderTimer.current) clearTimeout(wanderTimer.current);
+    };
+    // Shared values + refs are stable; the cycle restarts when canWander flips.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canWander]);
+
+  const wanderStyle = useAnimatedStyle(() => ({
+    // translate / rotate ONLY — never scale (user rule).
+    transform: [
+      { translateX: wanderX.value },
+      { translateY: wanderBob.value },
+      { rotate: `${wanderTilt.value}deg` },
+    ],
+  }));
 
   return (
     <Pressable
@@ -138,7 +246,14 @@ export default function PetStage({
       {isEgg ? (
         <Text style={{ fontSize: size * 0.55, lineHeight: size * 0.6 }}>🥚</Text>
       ) : isAnimatedPetId(petId) ? (
-        <AnimatedPet petId={petId} mood={mapMood(mood)} action={action} size={size} />
+        <Animated.View style={wanderStyle}>
+          <AnimatedPet
+            petId={petId}
+            mood={mapMood(mood)}
+            action={action === 'idle' && wandering ? 'walk' : action}
+            size={size}
+          />
+        </Animated.View>
       ) : (
         <PngPet petId={petId} size={size} />
       )}
