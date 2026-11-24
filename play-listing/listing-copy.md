@@ -14,7 +14,7 @@ Feed them, give them drinks, play together, tuck them in for naps, and keep them
 
 Your pals grow up: egg, baby, child, teen, adult. Take great care of them and they may even grow into a sparkly adult form. Play three mini-games — Catch the Star, Memory Match, and Jump! — to earn coins, then spend them in the shop on treats, toys, and cozy room themes.
 
-• Ten hand-drawn pals with their own personalities and moods
+• Ten adorable pals with their own personalities and moods
 • Momo and Kiki are free — adopt eight more pals in the app
 • Feed, drink, bathe, play, sleep, and care for your buddy
 • Watch your pal grow from egg to adult (and maybe sparkle!)
