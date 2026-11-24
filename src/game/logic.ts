@@ -385,7 +385,24 @@ export function ppApplyDecay(state: PetState, now: number, opts: DecayOptions = 
   return state;
 }
 
-/** Derive the current mood id from state. Priority order matters. */
+/**
+ * Live sleep-recovery tick, ported from popup.js's 5s live tick.
+ * While the popup/app is open and the pet is asleep: +2 Energy per tick
+ * (+4 with the Cozy Blanket). The mobile port originally dropped this
+ * tick and relied on ppApplyDecay's +10/hr asleep path — but ppClamp
+ * rounds to integers, so a 60s tick's +0.167 rounds to zero and energy
+ * NEVER rose while the app was open (reproduced: 30 min of 60s ticks
+ * while asleep, energy 20 -> 20). Also stamps lastSeen, exactly like
+ * popup.js, so the 60s decay tick sees ~0 elapsed while open and the
+ * two paths never double-count the same wall-clock time.
+ * Returns true when it did anything (i.e. the pet is asleep).
+ */
+export function ppLiveSleepTick(state: PetState, now: number, blanket = false): boolean {
+  if (!state.lightsOut) return false;
+  state.meters.energy = ppClamp(state.meters.energy + (blanket ? 4 : 2));
+  state.lastSeen = now;
+  return true;
+}
 export function ppDeriveMood(state: PetState, now: number): MoodId {
   const m = state.meters;
   if (state.lightsOut) return 'sleeping';

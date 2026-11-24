@@ -6,7 +6,9 @@
  *  - on load and on AppState foreground: decay + random events + daily
  *    bonuses (like reopening the extension popup);
  *  - while the app is open: a 60s interval applying decay + events and
- *    scheduling one low-meter local reminder when due.
+ *    scheduling one low-meter local reminder when due, plus a 5s live
+ *    sleep tick (+2 Energy per 5s while the pet is asleep, +4 with the
+ *    Cozy Blanket — the extension popup.js tick).
  *
  * Reminders mirror background.js: meter < 25, at most once per meter per
  * 2 hours, quiet hours 22:00–08:00 local, only the most urgent meter
@@ -22,9 +24,13 @@
  *     benefit survives the app being closed. The verify script covers
  *     the no-blanket numbers, which match shared.js exactly.
  *  2. The extension's 5s live tick also adds +2 Energy per 5s while
- *     asleep and the popup is open (on top of decay). The port does NOT
- *     replicate that tick — the 60s interval here applies ppApplyDecay,
- *     whose +10/hr asleep is the documented tuning.
+ *     asleep and the popup is open (on top of decay). The port replicates
+ *     it exactly as ppLiveSleepTick, driven by a 5s interval in the tick
+ *     engine (see applyLiveSleepTick). The decay-path +10/hr asleep
+ *     recovery covers closed-app time; the live tick covers open-app
+ *     time. The live tick also stamps lastSeen (like popup.js), so the
+ *     60s decay tick sees ~0 elapsed while open and the two paths never
+ *     double-count the same wall-clock time.
  *  3. Medicine gates on the derived mood being 'sick' (popup.js checks
  *     `mood !== 'sick'`), which implies health < 30 AND awake — so
  *     medicine is blocked while asleep, exactly as in the extension.
@@ -61,6 +67,7 @@ import {
   ppGameReward,
   ppIsOwned,
   ppIsSparkle,
+  ppLiveSleepTick,
   ppLowMeterAlert,
   ppMarkOwnedPet,
   ppMaybeTriggerEvents,
@@ -72,6 +79,8 @@ import type { MoodId, Save } from './logic';
 
 export const STORAGE_KEY = 'bobaBuddiesMobile';
 const TICK_MS = 60_000;
+/** Extension popup.js live tick: +2 Energy per 5s while asleep (+4 blanket). */
+const LIVE_TICK_MS = 5_000;
 const NOTIFICATION_CHANNEL_ID = 'boba-buddies';
 
 Notifications.setNotificationHandler({
@@ -163,6 +172,7 @@ function normalizeSave(stored: Save): Save {
 
 let engineStarted = false;
 let intervalId: ReturnType<typeof setInterval> | null = null;
+let liveIntervalId: ReturnType<typeof setInterval> | null = null;
 let appStateSubscription: { remove(): void } | null = null;
 
 async function ensureNotificationSetup(): Promise<void> {
@@ -213,10 +223,28 @@ async function applyTick(opts: { daily: boolean; notify: boolean }): Promise<voi
 }
 
 /**
+ * Live sleep-recovery tick (popup.js 5s tick): +2 Energy per 5s while the
+ * pet is asleep (+4 with the Cozy Blanket). No-op while awake — and it
+ * skips the setState entirely then, so there is no pointless write or
+ * re-render every 5s. Runs only while the app is open; closed-app sleep
+ * recovery is the decay path's job (applied on load/foreground).
+ */
+function applyLiveSleepTick(): void {
+  const now = Date.now();
+  const { save } = useGameStore.getState();
+  const next = cloneSave(save);
+  const state = activeState(next);
+  if (!state) return;
+  if (!ppLiveSleepTick(state, now, next.shop.blanket)) return;
+  useGameStore.setState({ save: next, ...derive(next, now) });
+}
+
+/**
  * Starts the foreground tick engine (idempotent). Called automatically
  * once the store finishes loading; safe to call again from App code.
  * Applies decay + events + daily bonuses immediately on foreground, then
- * decay + events (+ reminders) every 60s while the app is open.
+ * decay + events (+ reminders) every 60s while the app is open, plus the
+ * 5s live sleep-recovery tick (+2 Energy per 5s while asleep).
  */
 export function startTickEngine(): void {
   if (engineStarted) return;
@@ -225,6 +253,9 @@ export function startTickEngine(): void {
   intervalId = setInterval(() => {
     void applyTick({ daily: false, notify: true });
   }, TICK_MS);
+  liveIntervalId = setInterval(() => {
+    applyLiveSleepTick();
+  }, LIVE_TICK_MS);
   appStateSubscription = AppState.addEventListener('change', (appState) => {
     if (appState === 'active') {
       void applyTick({ daily: true, notify: true });
@@ -238,6 +269,10 @@ export function stopTickEngine(): void {
   if (intervalId !== null) {
     clearInterval(intervalId);
     intervalId = null;
+  }
+  if (liveIntervalId !== null) {
+    clearInterval(liveIntervalId);
+    liveIntervalId = null;
   }
   appStateSubscription?.remove();
   appStateSubscription = null;

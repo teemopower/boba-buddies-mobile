@@ -270,6 +270,52 @@ async function main(): Promise<void> {
     check('sleep: hunger decays at 1/4 rate', s.meters.hunger, 85); // 100 - 12*0.25*5
   }
 
+  // --- Extra: live sleep tick (the Nov 24 sleep bug) ------------------------
+  // Root cause: the port dropped popup.js's 5s live tick (+2 Energy per 5s
+  // while asleep). The 60s decay tick's +10/hr asleep path rounds to zero
+  // per tick (ppClamp rounds to integers: +0.167 -> 0), so energy NEVER
+  // rose while the app was open.
+  {
+    // The trap, documented: 30 min of foreground 60s decay ticks, asleep.
+    const s = L.ppDefaultPetState(NOW);
+    s.meters.energy = 20;
+    s.lightsOut = true;
+    s.lastSeen = NOW;
+    for (let i = 1; i <= 30; i++) L.ppApplyDecay(s, NOW + i * 60_000, { blanket: false });
+    check('sleep bug trap: 30x 60s decay ticks leave energy at 20', s.meters.energy, 20);
+
+    // The fix: ppLiveSleepTick, one tick = popup.js's 5s tick.
+    const t = L.ppDefaultPetState(NOW);
+    t.meters.energy = 20;
+    t.lightsOut = true;
+    t.lastSeen = NOW;
+    checkTrue('live sleep tick: applies while asleep', L.ppLiveSleepTick(t, NOW + 5000, false));
+    check('live sleep tick: +2 energy per tick', t.meters.energy, 22);
+    check('live sleep tick: stamps lastSeen', t.lastSeen, NOW + 5000);
+    const b = L.ppDefaultPetState(NOW);
+    b.meters.energy = 20;
+    b.lightsOut = true;
+    L.ppLiveSleepTick(b, NOW + 5000, true);
+    check('live sleep tick: +4 with blanket', b.meters.energy, 24);
+    const a = L.ppDefaultPetState(NOW);
+    a.meters.energy = 20;
+    a.lightsOut = false;
+    checkTrue('live sleep tick: no-op while awake', !L.ppLiveSleepTick(a, NOW + 5000, false));
+    check('live sleep tick: energy unchanged while awake', a.meters.energy, 20);
+    const f = L.ppDefaultPetState(NOW);
+    f.meters.energy = 100;
+    f.lightsOut = true;
+    L.ppLiveSleepTick(f, NOW + 5000, false);
+    check('live sleep tick: clamps at 100', f.meters.energy, 100);
+    // 12 ticks = 60s of sleep: 20 -> 44 (matches the extension: +2/5s).
+    const m = L.ppDefaultPetState(NOW);
+    m.meters.energy = 20;
+    m.lightsOut = true;
+    m.lastSeen = NOW;
+    for (let i = 1; i <= 12; i++) L.ppLiveSleepTick(m, NOW + i * 5000, false);
+    check('live sleep tick: 60s of sleep, energy 20 -> 44', m.meters.energy, 44);
+  }
+
   // --- Extra: ignored tantrum sulks -5 ---------------------------------------
   {
     const s = L.ppDefaultPetState(NOW);
