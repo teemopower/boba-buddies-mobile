@@ -78,29 +78,31 @@ const WANDER_PAUSE_MAX_MS = 30000;
 
 /** Walk speed in px per second — the drift duration is distance / speed,
  *  so short hops are quick and long walks take longer, like a pet walking
- *  with purpose instead of drifting. */
-const WANDER_SPEED_PX_PER_S = 55;
+ *  with purpose instead of drifting. SLOW (Nov 25, 2026 — user watched
+ *  the walk proof: 55 px/s read as frantic); 25 px/s reads calm. */
+const WANDER_SPEED_PX_PER_S = 25;
 
 /**
  * One step's frame duration in ms for the current mood — MUST match the
  * walk-cycle step durations in AnimatedPet resolveSequence ('walk'), so
- * the body's step bob stays in time with the legs. Cheerful 160 ms,
- * grumpy 200 ms, sad / lonely / tired (hungry, thirsty, dirty, bored)
- * 300 ms — the trudge reads in the pace as well as the face.
+ * the body's step bob stays in time with the legs. Cheerful 375 ms,
+ * grumpy 450 ms, sad / lonely / tired (hungry, thirsty, dirty, bored)
+ * 550 ms — slowed Nov 25, 2026 (the old 160/200/300 ms steps at 55 px/s
+ * read as frantic on video).
  */
 function walkStepMs(mood: MoodId): number {
   switch (mood) {
     case 'grumpy':
-      return 200;
+      return 450;
     case 'sad':
     case 'lonely':
     case 'hungry':
     case 'thirsty':
     case 'dirty':
     case 'bored':
-      return 300;
+      return 550;
     default:
-      return 160;
+      return 375;
   }
 }
 
@@ -281,7 +283,13 @@ export default function PetStage({
           cancelAnimation(wanderBob);
           wanderBob.value = 0;
           wanderTilt.value = withTiming(0, { duration: 300 });
-          scheduleNext(pauseMs());
+          // Pause measured from the START of this walk, so the gap
+          // between walk starts is pauseMs() (15-30 s) exactly. (Nov 25:
+          // scheduling the full pause after the walk ended stretched
+          // start-to-start gaps to 15.9-33 s; a 30.8 s wall-clock gap was
+          // measured.) The walk itself took `dur`, so only the remainder
+          // of the pause is left to wait.
+          scheduleNext(Math.max(0, pauseMs() - dur));
         }, dur + 60);
       }, delayMs);
     };

@@ -393,8 +393,9 @@ const img = (source: ImageSourcePropType, layer: StillKey): Frame => ({
  * excited — the same drawings in three places. Now: bath = tub + sponge
  * panels (star eyes, soap, tub — drawn that way), petting = the nuzzle
  * panel, walking = the walk-A/walk-B leg cycle, play = the jump-with-ball
- * panel, happy mood = happy still + happy-bounce, excited mood = excited
- * + excited-bounce. The neutral `base` still appears as a brief rest
+ * panel, happy mood = the happy-bounce panel (arms down — the arms-up
+ * happy still belongs to celebrate alone), excited mood = the excited
+ * panel (arms down). The neutral `base` still appears as a brief rest
  * frame inside a few cycles (chew, drink, petting, play) — that is the
  * pet at rest between motions, not another action's pose — and the
  * celebrate panel belongs to the celebrate action alone.
@@ -473,38 +474,44 @@ function resolveSequence(a: PetAssets, mood: MoodId, action: PetAction): SeqStep
         // a sad pet walked with the happy walk. Now the walk cycle matches
         // the mood: cheerful pets use the moves-sheet walk, sad/lonely
         // pets droop along slowly, grumpy pets stomp, and hungry/thirsty/
-        // dirty/bored pets trudge tiredly. Sad + tired steps are slower
-        // (300 ms) — the trudge reads in the pace as well as the face.
-        // PetStage's step bob runs at the same per-step period.
+        // dirty/bored pets trudge tiredly.
+        //
+        // SLOW (Nov 25, 2026 — user watched the walk proof: the 160 ms
+        // happy steps at ~6 steps/s read as frantic, and the A/B mirror
+        // flip at that rate flapped the arms). Happy is now ~375 ms per
+        // step (~2.7 steps/s), sad/tired slower still. PetStage's step
+        // bob (walkStepMs) MUST match these numbers.
         switch (mood) {
           case 'sad':
           case 'lonely':
             return [
-              { frame: p.sadWalkA, durationMs: 300 },
-              { frame: p.sadWalkB, durationMs: 300 },
+              { frame: p.sadWalkA, durationMs: 550 },
+              { frame: p.sadWalkB, durationMs: 550 },
             ];
           case 'grumpy':
             return [
-              { frame: p.grumpyWalkA, durationMs: 200 },
-              { frame: p.grumpyWalkB, durationMs: 200 },
+              { frame: p.grumpyWalkA, durationMs: 450 },
+              { frame: p.grumpyWalkB, durationMs: 450 },
             ];
           case 'hungry':
           case 'thirsty':
           case 'dirty':
           case 'bored':
             return [
-              { frame: p.tiredWalkA, durationMs: 300 },
-              { frame: p.tiredWalkB, durationMs: 300 },
+              { frame: p.tiredWalkA, durationMs: 550 },
+              { frame: p.tiredWalkB, durationMs: 550 },
             ];
           case 'happy':
           case 'excited':
           case 'content':
           default:
             // Real walk cycle: legs actually alternate (walk-A / walk-B)
-            // while PetStage drifts the pet across the room.
+            // while PetStage drifts the pet across the room. Arms stay
+            // DOWN at the sides in both frames (redrawn Nov 25) — arms-up
+            // is for celebrating/petting, never for walking.
             return [
-              { frame: p.walkA, durationMs: 160 },
-              { frame: p.walkB, durationMs: 160 },
+              { frame: p.walkA, durationMs: 375 },
+              { frame: p.walkB, durationMs: 375 },
             ];
         }
       default:
@@ -514,15 +521,19 @@ function resolveSequence(a: PetAssets, mood: MoodId, action: PetAction): SeqStep
 
   switch (mood) {
     case 'happy':
-      return [
-        { frame: img(a.happy, 'happy'), durationMs: 400 },
-        { frame: p.happyBounce, durationMs: 400 },
-      ];
+      // Single frame, arms DOWN: the happy-bounce panel (moves sheet)
+      // is the same happy face with the arms resting at the sides. The
+      // arms-up happy still is the celebrate pose — using it for idle
+      // made the pet snap its arms up at every walk end (Nov 25: part
+      // of the "arms going crazy" the user saw). The bounce motion
+      // profile below still bobs the pet; the frame stays put. The panel
+      // is centroid-aligned to the happy walk frames by
+      // scripts/align-idle-frames.py, so the walk -> idle cut doesn't jump.
+      return [{ frame: p.happyBounce, durationMs: 1000 }];
     case 'excited':
-      return [
-        { frame: p.excited, durationMs: 300 },
-        { frame: p.excitedBounce, durationMs: 300 },
-      ];
+      // Same fix as happy: the excited/excited-bounce alternation popped
+      // the same way. Single frame + the hop motion profile.
+      return [{ frame: p.excited, durationMs: 1000 }];
     case 'sick':
       return [{ frame: p.sick, durationMs: 1000 }];
     case 'sad':
@@ -869,17 +880,44 @@ export default function AnimatedPet({
 
   const motionKey = `${mood}|${action}`;
   useEffect(() => {
-    // Clean return to neutral before starting the new profile — this is
-    // what guarantees no stuck frames/poses when the action changes.
+    // NO instant reset: the old code snapped every shared value to 0
+    // here, so at every walk start the idle bounce (translateY anywhere
+    // in 0..-6) dropped up to 6px in a single frame, and the bounce
+    // restarted from 0 at every walk end — the visible snap at the walk
+    // boundaries (Nov 25 probe: translateY -5.95 -> 0.00 in one 25ms
+    // sample). Instead, axes the new profile drives start animating
+    // from their current value (withTiming animates FROM current, so no
+    // snap), and axes it does not drive ease back to neutral over
+    // 250ms. Nothing gets stuck: an undriven axis always settles to 0,
+    // and 'still' (walk) settles all three, so the pet lands gently
+    // before walking instead of dropping.
+    const profile = resolveMotion(mood, action);
     cancelAnimation(translateX);
     cancelAnimation(translateY);
     cancelAnimation(rotation);
-    translateX.value = 0;
-    translateY.value = 0;
-    rotation.value = 0;
 
     const inOut = Easing.inOut(Easing.ease);
-    switch (resolveMotion(mood, action)) {
+    // Which axes the new profile drives; the rest ease to neutral.
+    const drivesX = profile === 'wiggle' || profile === 'scrub';
+    const drivesY =
+      profile === 'breathe' ||
+      profile === 'bounce' ||
+      profile === 'hop' ||
+      profile === 'stomp' ||
+      profile === 'deepBob' ||
+      profile === 'nuzzle' ||
+      profile === 'nibble';
+    const drivesR =
+      profile === 'hop' ||
+      profile === 'wobble' ||
+      profile === 'scrub' ||
+      profile === 'nuzzle' ||
+      profile === 'sway';
+    if (!drivesX) translateX.value = withTiming(0, { duration: 250, easing: inOut });
+    if (!drivesY) translateY.value = withTiming(0, { duration: 250, easing: inOut });
+    if (!drivesR) rotation.value = withTiming(0, { duration: 250, easing: inOut });
+
+    switch (profile) {
       case 'breathe':
         // Gentle idle bob, ±3px on a ~2s cycle.
         translateY.value = withRepeat(
