@@ -101,7 +101,7 @@ export interface AnimatedPetProps {
  *  `layer` / `sheet` name the always-mounted layer that renders it (see
  *  the layered rendering below) — frames never swap Image sources. */
 type StillKey = 'base' | 'blink' | 'eat' | 'drink' | 'happy' | 'sad' | 'sleep';
-type SheetKey = 'expressions' | 'actions' | 'extra' | 'moves';
+type SheetKey = 'expressions' | 'actions' | 'extra' | 'moves' | 'walks';
 type LayerKey = StillKey | SheetKey;
 
 type Frame =
@@ -133,6 +133,7 @@ interface PetAssets {
   actionsSheet: ImageSourcePropType;
   extraSheet: ImageSourcePropType;
   movesSheet: ImageSourcePropType;
+  walksSheet: ImageSourcePropType;
 }
 
 const PET_ASSETS: Record<PetId, PetAssets> = {
@@ -148,6 +149,7 @@ const PET_ASSETS: Record<PetId, PetAssets> = {
     actionsSheet: require('../../assets/pets/momo-actions-sheet.png'),
     extraSheet: require('../../assets/pets/momo-extra-sheet.png'),
     movesSheet: require('../../assets/pets/momo-moves-sheet.png'),
+    walksSheet: require('../../assets/pets/momo-walks-sheet.png'),
   },
   kiki: {
     base: require('../../assets/pets/kiki.png'),
@@ -161,6 +163,7 @@ const PET_ASSETS: Record<PetId, PetAssets> = {
     actionsSheet: require('../../assets/pets/kiki-actions-sheet.png'),
     extraSheet: require('../../assets/pets/kiki-extra-sheet.png'),
     movesSheet: require('../../assets/pets/kiki-moves-sheet.png'),
+    walksSheet: require('../../assets/pets/kiki-walks-sheet.png'),
   },
   boba: {
     base: require('../../assets/pets/boba.png'),
@@ -174,6 +177,7 @@ const PET_ASSETS: Record<PetId, PetAssets> = {
     actionsSheet: require('../../assets/pets/boba-actions-sheet.png'),
     extraSheet: require('../../assets/pets/boba-extra-sheet.png'),
     movesSheet: require('../../assets/pets/boba-moves-sheet.png'),
+    walksSheet: require('../../assets/pets/boba-walks-sheet.png'),
   },
   yuki: {
     base: require('../../assets/pets/yuki.png'),
@@ -187,6 +191,7 @@ const PET_ASSETS: Record<PetId, PetAssets> = {
     actionsSheet: require('../../assets/pets/yuki-actions-sheet.png'),
     extraSheet: require('../../assets/pets/yuki-extra-sheet.png'),
     movesSheet: require('../../assets/pets/yuki-moves-sheet.png'),
+    walksSheet: require('../../assets/pets/yuki-walks-sheet.png'),
   },
   taro: {
     base: require('../../assets/pets/taro.png'),
@@ -200,6 +205,7 @@ const PET_ASSETS: Record<PetId, PetAssets> = {
     actionsSheet: require('../../assets/pets/taro-actions-sheet.png'),
     extraSheet: require('../../assets/pets/taro-extra-sheet.png'),
     movesSheet: require('../../assets/pets/taro-moves-sheet.png'),
+    walksSheet: require('../../assets/pets/taro-walks-sheet.png'),
   },
   purin: {
     base: require('../../assets/pets/purin.png'),
@@ -213,6 +219,7 @@ const PET_ASSETS: Record<PetId, PetAssets> = {
     actionsSheet: require('../../assets/pets/purin-actions-sheet.png'),
     extraSheet: require('../../assets/pets/purin-extra-sheet.png'),
     movesSheet: require('../../assets/pets/purin-moves-sheet.png'),
+    walksSheet: require('../../assets/pets/purin-walks-sheet.png'),
   },
   sora: {
     base: require('../../assets/pets/sora.png'),
@@ -226,6 +233,7 @@ const PET_ASSETS: Record<PetId, PetAssets> = {
     actionsSheet: require('../../assets/pets/sora-actions-sheet.png'),
     extraSheet: require('../../assets/pets/sora-extra-sheet.png'),
     movesSheet: require('../../assets/pets/sora-moves-sheet.png'),
+    walksSheet: require('../../assets/pets/sora-walks-sheet.png'),
   },
   miso: {
     base: require('../../assets/pets/miso.png'),
@@ -239,6 +247,7 @@ const PET_ASSETS: Record<PetId, PetAssets> = {
     actionsSheet: require('../../assets/pets/miso-actions-sheet.png'),
     extraSheet: require('../../assets/pets/miso-extra-sheet.png'),
     movesSheet: require('../../assets/pets/miso-moves-sheet.png'),
+    walksSheet: require('../../assets/pets/miso-walks-sheet.png'),
   },
   hana: {
     base: require('../../assets/pets/hana.png'),
@@ -252,6 +261,7 @@ const PET_ASSETS: Record<PetId, PetAssets> = {
     actionsSheet: require('../../assets/pets/hana-actions-sheet.png'),
     extraSheet: require('../../assets/pets/hana-extra-sheet.png'),
     movesSheet: require('../../assets/pets/hana-moves-sheet.png'),
+    walksSheet: require('../../assets/pets/hana-walks-sheet.png'),
   },
   nori: {
     base: require('../../assets/pets/nori.png'),
@@ -265,6 +275,7 @@ const PET_ASSETS: Record<PetId, PetAssets> = {
     actionsSheet: require('../../assets/pets/nori-actions-sheet.png'),
     extraSheet: require('../../assets/pets/nori-extra-sheet.png'),
     movesSheet: require('../../assets/pets/nori-moves-sheet.png'),
+    walksSheet: require('../../assets/pets/nori-walks-sheet.png'),
   },
 };
 
@@ -286,6 +297,14 @@ const PET_ASSETS: Record<PetId, PetAssets> = {
  *   moods stop borrowing the celebrate pose and each other's faces.
  *   row 0: walk-A (left foot)  | walk-B (right foot)
  *   row 1: happy-bounce        | excited-bounce (star eyes)
+ * walks sheet: 2400x1600, 3 cols x 2 rows (800px panels). Added Nov 24,
+ *   2026 — mood-matched walks: a sad pet must walk sad, not happy. The
+ *   cheerful walk still lives on the moves sheet (walk-A/walk-B); this
+ *   sheet holds the other three walk variants, two steps each.
+ *   row 0: sad-walk-A | sad-walk-B | grumpy-walk-A
+ *   row 1: grumpy-walk-B | tired-walk-A | tired-walk-B
+ *   Sad = drooped, slow, tearful. Grumpy = frown, stompy. Tired =
+ *   heavy-lidded slow trudge (hungry / thirsty / dirty / bored).
  */
 function sheetPanels(a: PetAssets): Record<string, Frame> {
   const expr = (col: number, row: number): Frame => ({
@@ -320,6 +339,14 @@ function sheetPanels(a: PetAssets): Record<string, Frame> {
     cols: 2,
     rows: 2,
   });
+  const wlk = (col: number, row: number): Frame => ({
+    kind: 'panel',
+    sheet: 'walks',
+    col,
+    row,
+    cols: 3,
+    rows: 2,
+  });
   return {
     chewMid: expr(0, 0),
     chewOpen: expr(1, 0),
@@ -339,6 +366,12 @@ function sheetPanels(a: PetAssets): Record<string, Frame> {
     walkB: mov(1, 0),
     happyBounce: mov(0, 1),
     excitedBounce: mov(1, 1),
+    sadWalkA: wlk(0, 0),
+    sadWalkB: wlk(1, 0),
+    grumpyWalkA: wlk(2, 0),
+    grumpyWalkB: wlk(0, 1),
+    tiredWalkA: wlk(1, 1),
+    tiredWalkB: wlk(2, 1),
   };
 }
 
@@ -436,12 +469,44 @@ function resolveSequence(a: PetAssets, mood: MoodId, action: PetAction): SeqStep
       case 'lonely':
         return [{ frame: p.lonely, durationMs: 1000 }];
       case 'walk':
-        // Real walk cycle: legs actually alternate (walk-A / walk-B)
-        // while PetStage drifts the pet across the room.
-        return [
-          { frame: p.walkA, durationMs: 160 },
-          { frame: p.walkB, durationMs: 160 },
-        ];
+        // MOOD-MATCHED walk (Nov 24, 2026 — user feedback on build #5):
+        // a sad pet walked with the happy walk. Now the walk cycle matches
+        // the mood: cheerful pets use the moves-sheet walk, sad/lonely
+        // pets droop along slowly, grumpy pets stomp, and hungry/thirsty/
+        // dirty/bored pets trudge tiredly. Sad + tired steps are slower
+        // (300 ms) — the trudge reads in the pace as well as the face.
+        // PetStage's step bob runs at the same per-step period.
+        switch (mood) {
+          case 'sad':
+          case 'lonely':
+            return [
+              { frame: p.sadWalkA, durationMs: 300 },
+              { frame: p.sadWalkB, durationMs: 300 },
+            ];
+          case 'grumpy':
+            return [
+              { frame: p.grumpyWalkA, durationMs: 200 },
+              { frame: p.grumpyWalkB, durationMs: 200 },
+            ];
+          case 'hungry':
+          case 'thirsty':
+          case 'dirty':
+          case 'bored':
+            return [
+              { frame: p.tiredWalkA, durationMs: 300 },
+              { frame: p.tiredWalkB, durationMs: 300 },
+            ];
+          case 'happy':
+          case 'excited':
+          case 'content':
+          default:
+            // Real walk cycle: legs actually alternate (walk-A / walk-B)
+            // while PetStage drifts the pet across the room.
+            return [
+              { frame: p.walkA, durationMs: 160 },
+              { frame: p.walkB, durationMs: 160 },
+            ];
+        }
       default:
         return blink;
     }
@@ -539,7 +604,10 @@ function resolveMotion(mood: MoodId, action: PetAction): MotionProfile {
       case 'pet':
         return 'nuzzle';
       case 'walk':
-        return 'breathe';
+        // Still: PetStage drives the walk — the step-synced bob and the
+        // drift. Any bob here would stack on top of it and read as
+        // dancing (the build #5 complaint).
+        return 'still';
       case 'sleep':
         return 'deepBob';
       case 'play':
@@ -974,6 +1042,7 @@ export default function AnimatedPet({
     { key: 'actions', source: assets.actionsSheet, sheet: true, cols: 2, rows: 2 },
     { key: 'extra', source: assets.extraSheet, sheet: true, cols: 2, rows: 2 },
     { key: 'moves', source: assets.movesSheet, sheet: true, cols: 2, rows: 2 },
+    { key: 'walks', source: assets.walksSheet, sheet: true, cols: 3, rows: 2 },
   ];
 
   return (

@@ -1,0 +1,18 @@
+{
+ "momo-happy:idle-start": 0,
+ "momo-happy:idle-start-offset-ms": 3748,
+ "momo-happy:end": 80004,
+ "momo-happy:mood-label": "Happy ✨",
+ "momo-sad:idle-start": 0,
+ "momo-sad:idle-start-offset-ms": 3143,
+ "momo-sad:end": 45001,
+ "momo-sad:mood-label": "Sad ✨",
+ "momo-grumpy:idle-start": 0,
+ "momo-grumpy:idle-start-offset-ms": 2961,
+ "momo-grumpy:end": 45001,
+ "momo-grumpy:mood-label": "Grumpy ✨",
+ "momo-tired:idle-start": 0,
+ "momo-tired:idle-start-offset-ms": 2835,
+ "momo-tired:end": 45001,
+ "momo-tired:mood-label": "Hungry ✨"
+}

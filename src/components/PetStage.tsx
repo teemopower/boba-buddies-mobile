@@ -19,11 +19,15 @@
  *   isSparkle  — sparkle adult form
  *   onPress    — tap the pet to give it a pat
  *   wander     — when true (Room screen), the pet wanders the room on its
- *     own: drifts left/right, pauses, turns around. Code-driven movement
- *     using the existing art (translate/rotate only, never scale — the
- *     pet leans into the walk and waddles; it does not flip, so it never
- *     changes size or mirrors). Pauses while sleeping, sick, sleepy, or
- *     during a one-shot action, and drifts back to centre first.
+ *     own: walks to a spot, then waits 15–30 s before the next walk.
+ *     Code-driven movement using the existing art (translate/rotate
+ *     only, never scale — the pet leans slightly into the walk and its
+ *     body bobs once per step, in time with the walk-cycle frames; it
+ *     does not flip, so it never changes size or mirrors). The walk
+ *     frames are mood-matched (see AnimatedPet 'walk'): a sad pet walks
+ *     sad, a grumpy pet stomps, a tired pet trudges. Pauses while
+ *     sleeping, sick, sleepy, or during a one-shot action, and drifts
+ *     back to centre first.
  */
 import { useEffect, useRef, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text } from 'react-native';
@@ -60,6 +64,45 @@ export interface PetStageProps {
 
 /** How far (px) the pet drifts left/right of centre while wandering. */
 const WANDER_RANGE = 64;
+
+/** Shortest walk worth taking (px) — shorter hops read as fidgeting,
+ *  not walking (Nov 24, 2026: the first proof run caught an 11 px
+ *  shuffle). Every walk covers at least this far. */
+const MIN_WALK_PX = 24;
+
+/** Pause between walks, in ms — 15–30 s, random (Nov 24, 2026: the user
+ *  said build #5's pet walked around far too much; the old 1.5–4 s pause
+ *  had it marching every few seconds). */
+const WANDER_PAUSE_MIN_MS = 15000;
+const WANDER_PAUSE_MAX_MS = 30000;
+
+/** Walk speed in px per second — the drift duration is distance / speed,
+ *  so short hops are quick and long walks take longer, like a pet walking
+ *  with purpose instead of drifting. */
+const WANDER_SPEED_PX_PER_S = 55;
+
+/**
+ * One step's frame duration in ms for the current mood — MUST match the
+ * walk-cycle step durations in AnimatedPet resolveSequence ('walk'), so
+ * the body's step bob stays in time with the legs. Cheerful 160 ms,
+ * grumpy 200 ms, sad / lonely / tired (hungry, thirsty, dirty, bored)
+ * 300 ms — the trudge reads in the pace as well as the face.
+ */
+function walkStepMs(mood: MoodId): number {
+  switch (mood) {
+    case 'grumpy':
+      return 200;
+    case 'sad':
+    case 'lonely':
+    case 'hungry':
+    case 'thirsty':
+    case 'dirty':
+    case 'bored':
+      return 300;
+    default:
+      return 160;
+  }
+}
 
 /** Static image map — Metro requires literal require() calls. */
 export const PET_IMAGES: Record<string, ImageSourcePropType> = {
@@ -141,14 +184,23 @@ export default function PetStage({
   // Hat sits on the head: sprite top + headTop fraction of the sprite.
   const hatTop = Math.max(0, size * (pet.headTop || 0.03) - 14);
 
-  // -- Wander (Nov 24, 2026) -------------------------------------------
-  // The pet drifts around the room on its own: pause, pick a spot within
-  // ±WANDER_RANGE, lean into the walk and waddle over, pause again.
+  // -- Wander (Nov 24, 2026; reworked after build #5 feedback) ---------
+  // The pet walks to a spot, then waits 15–30 s before the next walk.
   // Only while idle, awake, and well; any one-shot action, sleep, or
   // sickness pauses it and drifts the pet back to centre first. No flip:
   // the pet never mirrors (that would be a scale transform, banned by
-  // the user rule) — direction reads from the lean + drift instead, and
-  // a quick tilt sway marks the turn-around.
+  // the user rule) — direction reads from the lean + drift instead.
+  //
+  // WHY IT LOOKED LIKE DANCING (build #5): the old code waddle-bobbed
+  // ±3px on a fixed 280 ms loop while the pet drifted with an ease-in-out
+  // (slow-fast-slow) — the body swayed independently of the legs, so the
+  // pet rocked back and forth instead of walking. Now: (1) the drift runs
+  // at a CONSTANT speed (linear easing, duration from distance), like a
+  // pet walking with purpose; (2) the body bob is ONE small dip per step
+  // (±2px, period = two step-frames), in time with the legs; (3) the lean
+  // is a small STEADY 2° tilt held for the whole walk, not a sway.
+  // PetStage drives all of this — AnimatedPet's walk motion is 'still',
+  // so nothing stacks on top of the bob.
   const wanderX = useSharedValue(0);
   const wanderBob = useSharedValue(0);
   const wanderTilt = useSharedValue(0);
@@ -185,28 +237,43 @@ export default function PetStage({
       return undefined;
     }
     let cancelled = false;
+    const pauseMs = () =>
+      WANDER_PAUSE_MIN_MS + Math.random() * (WANDER_PAUSE_MAX_MS - WANDER_PAUSE_MIN_MS);
     const scheduleNext = (delayMs: number) => {
       wanderTimer.current = setTimeout(() => {
         if (cancelled) return;
-        const target = (Math.random() * 2 - 1) * WANDER_RANGE;
         const from = wanderPos.current;
-        const dir = target >= from ? 1 : -1;
-        const dur = 1200 + Math.random() * 1300;
+        // Pick a spot at least MIN_WALK_PX away: a 5 px shuffle reads as
+        // fidgeting, not walking. Direction is random, biased away from
+        // the edge the pet is already near.
+        const dir =
+          from > 40 ? -1 : from < -40 ? 1 : Math.random() < 0.5 ? -1 : 1;
+        const target = Math.max(
+          -WANDER_RANGE,
+          Math.min(
+            WANDER_RANGE,
+            from + dir * (MIN_WALK_PX + Math.random() * 40),
+          ),
+        );
+        const dist = Math.abs(target - from);
+        // Constant walking speed: longer walks take longer.
+        const dur = Math.min(3000, Math.max(900, (dist / WANDER_SPEED_PX_PER_S) * 1000));
+        const stepMs = walkStepMs(mood);
         setWandering(true);
-        // Lean into the walk, waddle-bob while moving, drift over.
-        wanderTilt.value = withTiming(dir * 4, {
+        // Steady small lean into the walk, held for the whole walk.
+        wanderTilt.value = withTiming(dir * 2, {
           duration: 300,
           easing: Easing.inOut(Easing.ease),
         });
+        // One small dip per step, in time with the walk-cycle frames
+        // (two frames per step cycle, so the bob period is 2 * stepMs).
         wanderBob.value = withRepeat(
-          withTiming(-3, { duration: 280, easing: Easing.inOut(Easing.ease) }),
+          withTiming(-2, { duration: stepMs, easing: Easing.inOut(Easing.ease) }),
           -1,
           true,
         );
-        wanderX.value = withTiming(target, {
-          duration: dur,
-          easing: Easing.inOut(Easing.ease),
-        });
+        // Linear easing: constant speed, walking with purpose.
+        wanderX.value = withTiming(target, { duration: dur, easing: Easing.linear });
         wanderPos.current = target;
         wanderTimer.current = setTimeout(() => {
           if (cancelled) return;
@@ -214,18 +281,20 @@ export default function PetStage({
           cancelAnimation(wanderBob);
           wanderBob.value = 0;
           wanderTilt.value = withTiming(0, { duration: 300 });
-          scheduleNext(1500 + Math.random() * 2500);
+          scheduleNext(pauseMs());
         }, dur + 60);
       }, delayMs);
     };
-    scheduleNext(1200 + Math.random() * 1800);
+    scheduleNext(pauseMs());
     return () => {
       cancelled = true;
       if (wanderTimer.current) clearTimeout(wanderTimer.current);
     };
-    // Shared values + refs are stable; the cycle restarts when canWander flips.
+    // Shared values + refs are stable; the cycle restarts when canWander
+    // flips or the mood changes (the step bob period must match the new
+    // mood's walk-cycle pace — see walkStepMs).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canWander]);
+  }, [canWander, mood]);
 
   const wanderStyle = useAnimatedStyle(() => ({
     // translate / rotate ONLY — never scale (user rule).

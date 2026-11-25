@@ -1,4 +1,4 @@
-# Boba Buddies — build the signed Android production AAB (versionCode 5) on Codemagic.
+# Boba Buddies — build the signed Android production AAB (versionCode 6) on Codemagic.
 #
 # Why this exists: the EAS free plan allows 15 Android + 15 iOS builds a
 # month, and the quota is exhausted until Dec 1, 2026. The GitHub Actions
@@ -38,7 +38,7 @@
 
 workflows:
   android-production-aab:
-    name: Android production AAB (versionCode 5)
+    name: Android production AAB (versionCode 6)
     max_build_duration: 60
     # Free plan: only mac_mini_m2 is available without billing enabled
     # (linux_x2 / mac_mini_m4 / linux_x4 / windows_x2 all require billing).
@@ -72,7 +72,7 @@ workflows:
 
       - name: Verify generated versionCode
         script: |
-          grep -n "versionCode 5" android/app/build.gradle
+          grep -n "versionCode 6" android/app/build.gradle
           grep -n 'versionName "1.0.0"' android/app/build.gradle
 
       - name: Set Android SDK location
