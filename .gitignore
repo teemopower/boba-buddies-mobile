@@ -42,3 +42,6 @@ yarn-error.*
 
 # Emitted JS next to TS sources (verify harness artifacts)
 src/**/*.js
+
+# Raw generated sprite-sheet art (flood-filled finals live in assets/pets/)
+assets/pets/gen/

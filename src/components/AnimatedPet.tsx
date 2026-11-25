@@ -9,12 +9,12 @@
  *      in assets/pets/ (base / blink / eat / drink / happy / sad / sleep).
  *      New expression + action panels come from the sprite sheets
  *      (momo/kiki-expressions-sheet.png, 3x2 grid of 640px panels;
- *      momo/kiki-actions-sheet.png, 2x2 grid of 800px panels). Sheets are
+ *      momo/kiki-actions-sheet.png, 2x2 grid of 800px panels; plus the
+ *      Nov 24 extra/moves sheets, 2x2 of 800px panels each). Sheets are
  *      sliced in code — an overflow-hidden window shows one panel of the
- *      sheet at a time, so no pre-sliced files are needed. Every frame
- *      change crossfades into the next over 80 ms (see PetLayer), so the
- *      eye sees an interpolated in-between frame between every pair of
- *      drawings — the motion reads fluid, like a cartoon.
+ *      sheet at a time, so no pre-sliced files are needed. Frame changes
+ *      are HARD CUTS between drawings (see PetLayer) — like a flipbook,
+ *      never a dissolve.
  *  (b) Smooth code-driven motion at 60fps via react-native-reanimated.
  *      The 'walk' action is driven by PetStage's wander: the pet drifts
  *      around the room on its own, using the existing art.
@@ -28,7 +28,7 @@
  * frame and restarts the motion profile from neutral (no stuck frames).
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import type { ImageSourcePropType } from 'react-native';
 import Animated, {
@@ -40,7 +40,6 @@ import Animated, {
   withRepeat,
   withSequence,
   withTiming,
-  type SharedValue,
 } from 'react-native-reanimated';
 
 export type PetId =
@@ -82,6 +81,7 @@ export type PetAction =
   | 'tantrum'
   | 'potty'
   | 'celebrate'
+  | 'pet'
   | 'lonely'
   | 'walk';
 
@@ -101,7 +101,7 @@ export interface AnimatedPetProps {
  *  `layer` / `sheet` name the always-mounted layer that renders it (see
  *  the layered rendering below) — frames never swap Image sources. */
 type StillKey = 'base' | 'blink' | 'eat' | 'drink' | 'happy' | 'sad' | 'sleep';
-type SheetKey = 'expressions' | 'actions';
+type SheetKey = 'expressions' | 'actions' | 'extra' | 'moves';
 type LayerKey = StillKey | SheetKey;
 
 type Frame =
@@ -131,6 +131,8 @@ interface PetAssets {
   sleep: ImageSourcePropType;
   expressionsSheet: ImageSourcePropType;
   actionsSheet: ImageSourcePropType;
+  extraSheet: ImageSourcePropType;
+  movesSheet: ImageSourcePropType;
 }
 
 const PET_ASSETS: Record<PetId, PetAssets> = {
@@ -144,6 +146,8 @@ const PET_ASSETS: Record<PetId, PetAssets> = {
     sleep: require('../../assets/pets/momo-sleep.png'),
     expressionsSheet: require('../../assets/pets/momo-expressions-sheet.png'),
     actionsSheet: require('../../assets/pets/momo-actions-sheet.png'),
+    extraSheet: require('../../assets/pets/momo-extra-sheet.png'),
+    movesSheet: require('../../assets/pets/momo-moves-sheet.png'),
   },
   kiki: {
     base: require('../../assets/pets/kiki.png'),
@@ -155,6 +159,8 @@ const PET_ASSETS: Record<PetId, PetAssets> = {
     sleep: require('../../assets/pets/kiki-sleep.png'),
     expressionsSheet: require('../../assets/pets/kiki-expressions-sheet.png'),
     actionsSheet: require('../../assets/pets/kiki-actions-sheet.png'),
+    extraSheet: require('../../assets/pets/kiki-extra-sheet.png'),
+    movesSheet: require('../../assets/pets/kiki-moves-sheet.png'),
   },
   boba: {
     base: require('../../assets/pets/boba.png'),
@@ -166,6 +172,8 @@ const PET_ASSETS: Record<PetId, PetAssets> = {
     sleep: require('../../assets/pets/boba-sleep.png'),
     expressionsSheet: require('../../assets/pets/boba-expressions-sheet.png'),
     actionsSheet: require('../../assets/pets/boba-actions-sheet.png'),
+    extraSheet: require('../../assets/pets/boba-extra-sheet.png'),
+    movesSheet: require('../../assets/pets/boba-moves-sheet.png'),
   },
   yuki: {
     base: require('../../assets/pets/yuki.png'),
@@ -177,6 +185,8 @@ const PET_ASSETS: Record<PetId, PetAssets> = {
     sleep: require('../../assets/pets/yuki-sleep.png'),
     expressionsSheet: require('../../assets/pets/yuki-expressions-sheet.png'),
     actionsSheet: require('../../assets/pets/yuki-actions-sheet.png'),
+    extraSheet: require('../../assets/pets/yuki-extra-sheet.png'),
+    movesSheet: require('../../assets/pets/yuki-moves-sheet.png'),
   },
   taro: {
     base: require('../../assets/pets/taro.png'),
@@ -188,6 +198,8 @@ const PET_ASSETS: Record<PetId, PetAssets> = {
     sleep: require('../../assets/pets/taro-sleep.png'),
     expressionsSheet: require('../../assets/pets/taro-expressions-sheet.png'),
     actionsSheet: require('../../assets/pets/taro-actions-sheet.png'),
+    extraSheet: require('../../assets/pets/taro-extra-sheet.png'),
+    movesSheet: require('../../assets/pets/taro-moves-sheet.png'),
   },
   purin: {
     base: require('../../assets/pets/purin.png'),
@@ -199,6 +211,8 @@ const PET_ASSETS: Record<PetId, PetAssets> = {
     sleep: require('../../assets/pets/purin-sleep.png'),
     expressionsSheet: require('../../assets/pets/purin-expressions-sheet.png'),
     actionsSheet: require('../../assets/pets/purin-actions-sheet.png'),
+    extraSheet: require('../../assets/pets/purin-extra-sheet.png'),
+    movesSheet: require('../../assets/pets/purin-moves-sheet.png'),
   },
   sora: {
     base: require('../../assets/pets/sora.png'),
@@ -210,6 +224,8 @@ const PET_ASSETS: Record<PetId, PetAssets> = {
     sleep: require('../../assets/pets/sora-sleep.png'),
     expressionsSheet: require('../../assets/pets/sora-expressions-sheet.png'),
     actionsSheet: require('../../assets/pets/sora-actions-sheet.png'),
+    extraSheet: require('../../assets/pets/sora-extra-sheet.png'),
+    movesSheet: require('../../assets/pets/sora-moves-sheet.png'),
   },
   miso: {
     base: require('../../assets/pets/miso.png'),
@@ -221,6 +237,8 @@ const PET_ASSETS: Record<PetId, PetAssets> = {
     sleep: require('../../assets/pets/miso-sleep.png'),
     expressionsSheet: require('../../assets/pets/miso-expressions-sheet.png'),
     actionsSheet: require('../../assets/pets/miso-actions-sheet.png'),
+    extraSheet: require('../../assets/pets/miso-extra-sheet.png'),
+    movesSheet: require('../../assets/pets/miso-moves-sheet.png'),
   },
   hana: {
     base: require('../../assets/pets/hana.png'),
@@ -232,6 +250,8 @@ const PET_ASSETS: Record<PetId, PetAssets> = {
     sleep: require('../../assets/pets/hana-sleep.png'),
     expressionsSheet: require('../../assets/pets/hana-expressions-sheet.png'),
     actionsSheet: require('../../assets/pets/hana-actions-sheet.png'),
+    extraSheet: require('../../assets/pets/hana-extra-sheet.png'),
+    movesSheet: require('../../assets/pets/hana-moves-sheet.png'),
   },
   nori: {
     base: require('../../assets/pets/nori.png'),
@@ -243,6 +263,8 @@ const PET_ASSETS: Record<PetId, PetAssets> = {
     sleep: require('../../assets/pets/nori-sleep.png'),
     expressionsSheet: require('../../assets/pets/nori-expressions-sheet.png'),
     actionsSheet: require('../../assets/pets/nori-actions-sheet.png'),
+    extraSheet: require('../../assets/pets/nori-extra-sheet.png'),
+    movesSheet: require('../../assets/pets/nori-moves-sheet.png'),
   },
 };
 
@@ -254,6 +276,16 @@ const PET_ASSETS: Record<PetId, PetAssets> = {
  * actions sheet: 1600x1600, 2 cols x 2 rows (800px panels).
  *   row 0: celebrate    | tantrum-stomp
  *   row 1: potty-wiggle | sleep-deep
+ * extra sheet: 1600x1600, 2 cols x 2 rows (800px panels). Added Nov 24,
+ *   2026 — every panel is a pose no other action uses (the uniqueness
+ *   overhaul: bath/petting/play finally have their own art).
+ *   row 0: petting-nuzzle | bath-tub (stars eyes, bubbles)
+ *   row 1: bath-sponge     | play-jump (with ball)
+ * moves sheet: 1600x1600, 2 cols x 2 rows (800px panels). Added Nov 24,
+ *   2026 — walk cycle + mood bounces, so walking and the happy/excited
+ *   moods stop borrowing the celebrate pose and each other's faces.
+ *   row 0: walk-A (left foot)  | walk-B (right foot)
+ *   row 1: happy-bounce        | excited-bounce (star eyes)
  */
 function sheetPanels(a: PetAssets): Record<string, Frame> {
   const expr = (col: number, row: number): Frame => ({
@@ -272,6 +304,22 @@ function sheetPanels(a: PetAssets): Record<string, Frame> {
     cols: 2,
     rows: 2,
   });
+  const ext = (col: number, row: number): Frame => ({
+    kind: 'panel',
+    sheet: 'extra',
+    col,
+    row,
+    cols: 2,
+    rows: 2,
+  });
+  const mov = (col: number, row: number): Frame => ({
+    kind: 'panel',
+    sheet: 'moves',
+    col,
+    row,
+    cols: 2,
+    rows: 2,
+  });
   return {
     chewMid: expr(0, 0),
     chewOpen: expr(1, 0),
@@ -283,6 +331,14 @@ function sheetPanels(a: PetAssets): Record<string, Frame> {
     tantrum: act(1, 0),
     potty: act(0, 1),
     sleepDeep: act(1, 1),
+    petting: ext(0, 0),
+    bathTub: ext(1, 0),
+    bathSponge: ext(0, 1),
+    playJump: ext(1, 1),
+    walkA: mov(0, 0),
+    walkB: mov(1, 0),
+    happyBounce: mov(0, 1),
+    excitedBounce: mov(1, 1),
   };
 }
 
@@ -297,14 +353,22 @@ const img = (source: ImageSourcePropType, layer: StillKey): Frame => ({
  * is not 'idle'; otherwise the mood picks the idle face. Every sequence is
  * short and loops.
  *
- * SMOOTHNESS (Nov 24, 2026): steps run at ~100–260 ms (roughly 4–10
- * steps/s) and every step change crossfades into the next frame over
- * CROSSFADE_MS via the layered renderer below, so the eye sees an
- * interpolated in-between frame between every pair of drawings — the
- * motion reads fluid, like a cartoon, instead of hard-cutting between
- * stills. Sequences use as many distinct drawings as the art has (the
- * chew cycle, for example, is base → chew-mid → chew-open → chew-mid →
- * base, not just two frames).
+ * UNIQUENESS (Nov 24, 2026 overhaul — user feedback on build #4): every
+ * action now has its OWN primary frames, and no action borrows another
+ * action's pose. Before this, petting played the celebrate (arms-up)
+ * panel, walking alternated base/happy, and bath cycled happy/base/
+ * excited — the same drawings in three places. Now: bath = tub + sponge
+ * panels (star eyes, soap, tub — drawn that way), petting = the nuzzle
+ * panel, walking = the walk-A/walk-B leg cycle, play = the jump-with-ball
+ * panel, happy mood = happy still + happy-bounce, excited mood = excited
+ * + excited-bounce. The neutral `base` still appears as a brief rest
+ * frame inside a few cycles (chew, drink, petting, play) — that is the
+ * pet at rest between motions, not another action's pose — and the
+ * celebrate panel belongs to the celebrate action alone.
+ *
+ * HARD CUTS (Nov 24, 2026 — the on-device blink fix): frame changes are
+ * instant layer switches (see PetLayer). Steps run at ~140–500 ms, like
+ * a flipbook; drawings cut, they never dissolve.
  */
 function resolveSequence(a: PetAssets, mood: MoodId, action: PetAction): SeqStep[] {
   const p = sheetPanels(a);
@@ -332,23 +396,27 @@ function resolveSequence(a: PetAssets, mood: MoodId, action: PetAction): SeqStep
           { frame: base, durationMs: 250 },
         ];
       case 'bath':
-        // Scrub cycle — happy face alternating with base while the pet
-        // wiggles (see 'scrub' motion) under floating soap bubbles.
-        // Added Nov 24, 2026: Bath previously played no animation at all
-        // (RoomScreen reset the action to 'idle'); parity with the
-        // extension, which wiggles the sprite + shows 🫧 bubbles.
+        // Tub + sponge-rub cycle, both drawn with star eyes, an excited
+        // smile, soap suds and bubbles (extra sheet). The floating 🫧
+        // bubbles and the 'scrub' wiggle still play on top.
         return [
-          { frame: img(a.happy, 'happy'), durationMs: 180 },
-          { frame: base, durationMs: 180 },
-          { frame: p.excited, durationMs: 180 },
+          { frame: p.bathTub, durationMs: 220 },
+          { frame: p.bathSponge, durationMs: 220 },
+        ];
+      case 'pet':
+        // Nuzzle: lean-in with closed happy eyes + blush, then rest.
+        // Petting NEVER plays the celebrate (arms-up) panel anymore.
+        return [
+          { frame: p.petting, durationMs: 500 },
+          { frame: base, durationMs: 300 },
         ];
       case 'sleep':
         return [{ frame: img(a.sleep, 'sleep'), durationMs: 1000 }];
       case 'play':
+        // Jump with the ball, then land. Own panel — not celebrate.
         return [
-          { frame: base, durationMs: 160 },
-          { frame: img(a.happy, 'happy'), durationMs: 160 },
-          { frame: p.excited, durationMs: 160 },
+          { frame: p.playJump, durationMs: 200 },
+          { frame: base, durationMs: 150 },
         ];
       case 'sick':
         return [{ frame: p.sick, durationMs: 1000 }];
@@ -368,11 +436,11 @@ function resolveSequence(a: PetAssets, mood: MoodId, action: PetAction): SeqStep
       case 'lonely':
         return [{ frame: p.lonely, durationMs: 1000 }];
       case 'walk':
-        // Wandering waddle — face bobs between base and happy while the
-        // stage drifts the pet across the room (see PetStage wander).
+        // Real walk cycle: legs actually alternate (walk-A / walk-B)
+        // while PetStage drifts the pet across the room.
         return [
-          { frame: base, durationMs: 140 },
-          { frame: img(a.happy, 'happy'), durationMs: 140 },
+          { frame: p.walkA, durationMs: 160 },
+          { frame: p.walkB, durationMs: 160 },
         ];
       default:
         return blink;
@@ -383,12 +451,12 @@ function resolveSequence(a: PetAssets, mood: MoodId, action: PetAction): SeqStep
     case 'happy':
       return [
         { frame: img(a.happy, 'happy'), durationMs: 400 },
-        { frame: p.excited, durationMs: 400 },
+        { frame: p.happyBounce, durationMs: 400 },
       ];
     case 'excited':
       return [
         { frame: p.excited, durationMs: 300 },
-        { frame: img(a.happy, 'happy'), durationMs: 300 },
+        { frame: p.excitedBounce, durationMs: 300 },
       ];
     case 'sick':
       return [{ frame: p.sick, durationMs: 1000 }];
@@ -456,6 +524,7 @@ type MotionProfile =
   | 'scrub'
   | 'sway'
   | 'nibble'
+  | 'nuzzle'
   | 'still';
 
 function resolveMotion(mood: MoodId, action: PetAction): MotionProfile {
@@ -467,6 +536,8 @@ function resolveMotion(mood: MoodId, action: PetAction): MotionProfile {
         return 'breathe';
       case 'bath':
         return 'scrub';
+      case 'pet':
+        return 'nuzzle';
       case 'walk':
         return 'breathe';
       case 'sleep':
@@ -628,18 +699,8 @@ function FloatingBubbles({ size }: { size: number }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Crossfaded layer rendering (Nov 24, 2026)                           */
+/* Layer rendering — HARD CUTS (Nov 24, 2026)                          */
 /* ------------------------------------------------------------------ */
-
-/**
- * How long one frame blends into the next. Every frame change crossfades
- * the outgoing layer out and the incoming layer in over this long, so the
- * eye sees an interpolated in-between frame between every pair of
- * drawings — that is what makes the animation read fluid, like a cartoon,
- * instead of hard-cutting between stills. Kept just under the shortest
- * sequence step (eat, 100 ms) so blends never queue up.
- */
-const CROSSFADE_MS = 80;
 
 type PanelPos = { col: number; row: number } | null;
 
@@ -650,44 +711,39 @@ interface PetLayerProps {
   cols: number;
   rows: number;
   isActive: boolean;
-  isPrev: boolean;
   /** Current panel offset on this sheet (null when the active frame is
    *  not a panel of this sheet). */
   panel: PanelPos;
-  /** Previous panel offset on this sheet (for crossfading two panels of
-   *  the same sheet). */
-  prevPanel: PanelPos;
-  /** Shared 0→1 progress of the current crossfade. */
-  fade: SharedValue<number>;
 }
 
 /**
  * One always-mounted layer (a still, or one sprite sheet). A frame change
- * never mounts, unmounts, or swaps an image src — it only animates
- * opacities (the Nov 23 blink fix, kept), and now the outgoing layer
- * fades out while the incoming layer fades in instead of flipping
- * instantly. When the outgoing and incoming frames are two panels of
- * the SAME sheet, the sheet is rendered twice at different offsets, one
- * fading out and one fading in.
+ * never mounts, unmounts, or swaps an image src — it only flips which
+ * layer has opacity 1.
+ *
+ * WHY HARD CUTS (the on-device blink fix, Nov 24, 2026): the previous
+ * renderer crossfaded every frame change over 80 ms. Mid-dissolve both
+ * drawings sit at partial opacity and their pixels don't overlap, so the
+ * pet's effective alpha dips well below 1 through most of the
+ * transition — with eat steps at 100 ms the pet spent ~80% of the time
+ * mid-dissolve. On a real Android screen, over the bright room
+ * background, that reads as the pet blinking on every move. (On web it
+ * looked "smooth" in stills, which is why the 4,223-frame web check
+ * passed it — the web proof measured static visibility, not motion.)
+ * A second defect made it worse: the new frame rendered one commit at
+ * full opacity before the fade effect set the shared value to 0, so the
+ * new drawing popped in, dimmed out, and dissolved back in — a literal
+ * single-frame blink on every step.
+ *
+ * Frame changes are now instant: the active layer is opacity 1, every
+ * other layer is opacity 0, and there is NO animated opacity anywhere
+ * on the pet. That is how flipbook cartoons work — drawings cut, they
+ * never dissolve — and the pet stays fully opaque in every single
+ * frame. The layered mounting from the Nov 23 blink fix is kept:
+ * nothing ever mounts, unmounts, or swaps src mid-animation, and
+ * fadeDuration={0} kills the native fade-in.
  */
-function PetLayer({
-  size,
-  source,
-  sheet,
-  cols,
-  rows,
-  isActive,
-  isPrev,
-  panel,
-  prevPanel,
-  fade,
-}: PetLayerProps) {
-  const mainStyle = useAnimatedStyle(() => ({
-    opacity: isActive ? fade.value : isPrev ? 1 - fade.value : 0,
-  }));
-  const prevStyle = useAnimatedStyle(() => ({ opacity: 1 - fade.value }));
-  const currStyle = useAnimatedStyle(() => ({ opacity: fade.value }));
-
+function PetLayer({ size, source, sheet, cols, rows, isActive, panel }: PetLayerProps) {
   const windowStyle = {
     position: 'absolute' as const,
     width: size,
@@ -702,48 +758,19 @@ function PetLayer({
     top: -row * size,
   });
 
-  if (
-    sheet &&
-    panel &&
-    prevPanel &&
-    (panel.col !== prevPanel.col || panel.row !== prevPanel.row)
-  ) {
-    return (
-      <View style={windowStyle}>
-        <Animated.View style={[StyleSheet.absoluteFill, prevStyle]}>
-          <Image
-            source={source}
-            fadeDuration={0}
-            style={sheetImageStyle(prevPanel.col, prevPanel.row)}
-            resizeMode="stretch"
-          />
-        </Animated.View>
-        <Animated.View style={[StyleSheet.absoluteFill, currStyle]}>
-          <Image
-            source={source}
-            fadeDuration={0}
-            style={sheetImageStyle(panel.col, panel.row)}
-            resizeMode="stretch"
-          />
-        </Animated.View>
-      </View>
-    );
-  }
-
-  const offset = panel ?? prevPanel;
   return (
-    <Animated.View style={[windowStyle, mainStyle]}>
+    <View style={[windowStyle, { opacity: isActive ? 1 : 0 }]}>
       <Image
         source={source}
         fadeDuration={0}
         style={
           sheet
-            ? sheetImageStyle(offset?.col ?? 0, offset?.row ?? 0)
+            ? sheetImageStyle(panel?.col ?? 0, panel?.row ?? 0)
             : { width: size, height: size }
         }
         resizeMode={sheet ? 'stretch' : 'contain'}
       />
-    </Animated.View>
+    </View>
   );
 }
 
@@ -843,8 +870,10 @@ export default function AnimatedPet({
         );
         break;
       case 'scrub':
-        // Bath scrub-wiggle: rapid small side-to-side scrub, mirroring
-        // the extension's `scrub-wiggle .28s` CSS animation.
+        // Bath sponge-rub: rapid small side-to-side scrub, mirroring
+        // the extension's `scrub-wiggle .28s` CSS animation, plus a
+        // slight ±3° tilt so the rub reads in the body as well as the
+        // frames. Translate/rotate only — never scale.
         translateX.value = withRepeat(
           withSequence(
             withTiming(-4, { duration: 140, easing: inOut }),
@@ -853,6 +882,26 @@ export default function AnimatedPet({
           ),
           -1,
         );
+        rotation.value = withRepeat(
+          withSequence(
+            withTiming(3, { duration: 140, easing: inOut }),
+            withTiming(-3, { duration: 280, easing: inOut }),
+            withTiming(3, { duration: 140, easing: inOut }),
+          ),
+          -1,
+        );
+        break;
+      case 'nuzzle':
+        // Petting: slow lean-in, gentle ±2° tilt — a nuzzle, not a bounce.
+        rotation.value = withRepeat(
+          withSequence(
+            withTiming(2, { duration: 600, easing: inOut }),
+            withTiming(-2, { duration: 1200, easing: inOut }),
+            withTiming(0, { duration: 600, easing: inOut }),
+          ),
+          -1,
+        );
+        translateY.value = withRepeat(withTiming(-2, { duration: 600, easing: inOut }), -1, true);
         break;
       case 'sway':
         // Lonely / bored slow sway, rotate ±2°.
@@ -887,30 +936,9 @@ export default function AnimatedPet({
 
   const showZzz = action === 'sleep' || (action === 'idle' && mood === 'sleepy');
 
-  // CROSSFADE (Nov 24, 2026): when the frame changes, keep the outgoing
-  // frame mounted as `prevFrame` and animate `fade` 0→1 over
-  // CROSSFADE_MS — PetLayer fades the old layer out while the new one
-  // fades in. The blink fix still holds: nothing ever mounts, unmounts,
-  // or swaps src mid-animation, and fadeDuration={0} kills the native
-  // fade-in, so the pet is visible in every single frame.
-  const [prevFrame, setPrevFrame] = useState<Frame | null>(null);
-  const fade = useSharedValue(1);
-  const frameRef = useRef(frame);
-  useEffect(() => {
-    if (frameRef.current !== frame) {
-      const old = frameRef.current;
-      frameRef.current = frame;
-      setPrevFrame(old);
-      fade.value = 0;
-      fade.value = withTiming(1, { duration: CROSSFADE_MS });
-      const t = setTimeout(() => setPrevFrame(null), CROSSFADE_MS + 30);
-      return () => clearTimeout(t);
-    }
-    return undefined;
-  }, [frame, fade]);
-
-  // BLINK FIX (Nov 23, 2026): the pet used to vanish for a split second on
-  // every frame change. Two causes, both fixed here by layered rendering:
+  // LAYERED RENDERING (Nov 23, 2026 blink fix, kept; Nov 24 hard-cut
+  // change): the pet used to vanish for a split second on every frame
+  // change. Two causes, both fixed here by layered rendering:
   //  (1) the old code conditionally rendered either a still <Image> or a
   //      sheet <Image> inside an overflow-hidden window, so every
   //      image<->panel switch UNMOUNTED one image and mounted another —
@@ -919,20 +947,15 @@ export default function AnimatedPet({
   //  (2) on Android, every <Image> source change fades in from transparent
   //      over the default fadeDuration of 300ms.
   // Now ALL of the pet's frames are mounted from the first render — 7
-  // stills + 2 sheets — and a frame change only flips which layer has
+  // stills + 4 sheets — and a frame change only flips which layer has
   // opacity 1. Nothing ever mounts, unmounts, or swaps src mid-animation,
   // and fadeDuration={0} kills the native fade-in, so the pet is visible
-  // in every single frame on web, Android, and iOS.
+  // in every single frame on web, Android, and iOS. And since Nov 24
+  // there is no crossfade at all (see PetLayer): the switch is a hard
+  // cut, so the pet also never dims mid-transition.
   const panel: PanelPos =
     frame.kind === 'panel' ? { col: frame.col, row: frame.row } : null;
-  const prevPanel: PanelPos =
-    prevFrame?.kind === 'panel' ? { col: prevFrame.col, row: prevFrame.row } : null;
   const activeLayer: LayerKey = frame.kind === 'image' ? frame.layer : frame.sheet;
-  const prevLayer: LayerKey | null = prevFrame
-    ? prevFrame.kind === 'image'
-      ? prevFrame.layer
-      : prevFrame.sheet
-    : null;
   const layers: {
     key: LayerKey;
     source: ImageSourcePropType;
@@ -949,6 +972,8 @@ export default function AnimatedPet({
     { key: 'sleep', source: assets.sleep, sheet: false, cols: 1, rows: 1 },
     { key: 'expressions', source: assets.expressionsSheet, sheet: true, cols: 3, rows: 2 },
     { key: 'actions', source: assets.actionsSheet, sheet: true, cols: 2, rows: 2 },
+    { key: 'extra', source: assets.extraSheet, sheet: true, cols: 2, rows: 2 },
+    { key: 'moves', source: assets.movesSheet, sheet: true, cols: 2, rows: 2 },
   ];
 
   return (
@@ -963,10 +988,7 @@ export default function AnimatedPet({
             cols={layer.cols}
             rows={layer.rows}
             isActive={layer.key === activeLayer}
-            isPrev={layer.key === prevLayer}
             panel={layer.key === activeLayer ? panel : null}
-            prevPanel={layer.key === prevLayer ? prevPanel : null}
-            fade={fade}
           />
         ))}
       </Animated.View>

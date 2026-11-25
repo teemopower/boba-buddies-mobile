@@ -30,7 +30,7 @@ Run lint and typecheck before declaring any task done.
 
 ## Building with Codemagic
 
-- Do NOT use EAS: the free-plan build quota is exhausted until Dec 1, 2026, and GitHub Actions is blocked account-wide on a billing issue. Builds run on **Codemagic** via `codemagic.yaml` (manual trigger only, mac_mini_m2, free tier). See the header comments in `codemagic.yaml` for the one-time setup (Codemagic app + Android keystore — the keystore does not exist yet and needs a user-chosen password).
+- Do NOT use EAS: the free-plan build quota is exhausted until Dec 1, 2026, and GitHub Actions is blocked account-wide on a billing issue. Builds run on **Codemagic** via `codemagic.yaml` (manual trigger only, mac_mini_m2, free tier). See the header comments in `codemagic.yaml` for the one-time setup (Codemagic app + Android keystore — keystore `boba-buddies-release-keystore` uploaded to Codemagic Nov 23, 2026).
 - Nothing in this repo submits to Google Play or the App Store; the AAB is downloaded and submitted by a human with the user's go-ahead.
 
 ## Rules

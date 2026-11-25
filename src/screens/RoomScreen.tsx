@@ -182,7 +182,7 @@ export default function RoomScreen() {
     if (sleeping) return;
     petAction();
     audioPlayer.playSfx('squeak');
-    playAction('celebrate', 900);
+    playAction('pet', 1200);
   };
 
   const onMute = async () => {
