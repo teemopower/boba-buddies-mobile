@@ -242,9 +242,41 @@ workflows:
           xcode-project use-profiles
 
       - name: Build IPA for distribution
+        # NOTE (Nov 26, 2026): build #1 (6b088ee2) failed here with exit
+        # code 65 and an EMPTY log — `xcode-project build-ipa` swallowed
+        # all xcodebuild output, so the cause was invisible. This step
+        # runs xcodebuild directly so its output streams to the step log.
         script: |
-          xcode-project build-ipa \
-            --workspace "$CM_BUILD_DIR/ios/$XCODE_WORKSPACE" \
-            --scheme "$XCODE_SCHEME"
+          xcodebuild -workspace "$CM_BUILD_DIR/ios/$XCODE_WORKSPACE" \
+            -scheme "$XCODE_SCHEME" \
+            -archivePath "$CM_BUILD_DIR/build/ios/xcarchive/BobaBuddies.xcarchive" \
+            archive \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            DEVELOPMENT_TEAM=XPFPFQNB3T \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            CODE_SIGN_STYLE=Manual
+          PROFILE=$(xcodebuild -workspace "$CM_BUILD_DIR/ios/$XCODE_WORKSPACE" -scheme "$XCODE_SCHEME" -showBuildSettings -configuration Release | grep -m1 PROVISIONING_PROFILE_SPECIFIER | sed 's/^.*= //;s/^ *//')
+          echo "Exporting IPA with provisioning profile: $PROFILE"
+          cat > /tmp/ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>teamID</key>
+            <string>XPFPFQNB3T</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>$BUNDLE_ID</key>
+              <string>$PROFILE</string>
+            </dict>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath "$CM_BUILD_DIR/build/ios/xcarchive/BobaBuddies.xcarchive" \
+            -exportPath "$CM_BUILD_DIR/build/ios/ipa" \
+            -exportOptionsPlist /tmp/ExportOptions.plist
     artifacts:
       - build/ios/ipa/*.ipa
