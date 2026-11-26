@@ -1,18 +1,24 @@
-# Boba Buddies — build the signed Android production AAB (versionCode 9) on Codemagic.
+# Boba Buddies — Codemagic builds (Android AAB + iOS IPA).
 #
 # Why this exists: the EAS free plan allows 15 Android + 15 iOS builds a
 # month, and the quota is exhausted until Dec 1, 2026. The GitHub Actions
 # backup is also unusable right now — GitHub refuses to start Actions jobs
 # on the teemopower account ("recent account payments have failed or your
 # spending limit needs to be increased"). Codemagic is the free backup:
-# 500 free Mac mini M2 minutes a month, no credit card required. This
-# workflow runs the same Gradle release build and signs with the release
-# keystore, so the AAB matches the Play listing's signing key.
+# 500 free Mac mini M2 minutes a month, no credit card required.
 #
 # Manual trigger only — no `triggering` section means builds start only
 # from the Codemagic UI (Start new build) or API, never on push.
-# Nothing here submits to Google Play; the AAB is downloaded and submitted
-# by a human with the user's go-ahead.
+# Nothing here submits to Google Play, TestFlight or the App Store; the
+# AAB/IPA is downloaded and submitted by a human with the user's go-ahead.
+#
+# Workflows:
+#   android-production-aab — signed release AAB (versionCode 9).
+#   ios-production-ipa     — signed release IPA (build 1, version 1.0.0).
+#   iOS build numbers are independent of Android's versionCode: iOS starts
+#   at build 1 (this is the first iOS build) and bumps 1, 2, 3… per
+#   release, exactly like versionCode bumps on Android. Keep the workflow
+#   name and the verify step in sync when bumping ios.buildNumber.
 #
 # Required Codemagic setup (UI, once — parent agent does this in the browser):
 #   1. Sign in to Codemagic (GitHub SSO as teemopower) and add the
@@ -35,6 +41,35 @@
 #     (Codemagic does not read eas.json). Until the key is set, the build
 #     still succeeds but the Pals tab reports "payments unconfigured" and
 #     pets cannot be bought.
+#
+# iOS setup (once, before the FIRST iOS build — parent agent does this in
+# the browser; nothing here creates App Store records or keys):
+#   1. Create the App Store Connect app record (bundle ID
+#      com.adaptationapps.bobabuddies — already in app.json). This also
+#      registers the bundle ID in the Apple Developer portal.
+#   2. Create the same 9 non-consumable IAP products in App Store Connect
+#      (docs/payments.md: IDs + prices), import them into the RevenueCat
+#      "pets" entitlement + default offering, and add the iOS app in
+#      RevenueCat (upload the App Store Connect In-App Purchase Key).
+#   3. In the Codemagic variable group "boba-buddies", add the iOS
+#      RevenueCat public key: EXPO_PUBLIC_REVENUECAT_IOS_KEY = appl_…
+#      (secure). Until it is set, the build still succeeds but the Pals
+#      tab reports "payments unconfigured" on iOS.
+#   4. In the same group, add the App Store Connect API key + certificate
+#      private key (all secure) for automatic code signing:
+#        APP_STORE_CONNECT_PRIVATE_KEY   — full contents of the .p8 file
+#        APP_STORE_CONNECT_KEY_IDENTIFIER — Key ID from App Store Connect
+#        APP_STORE_CONNECT_ISSUER_ID      — Issuer ID (top of the API keys page)
+#        CERTIFICATE_PRIVATE_KEY — 2048-bit RSA key; generate on a Mac with:
+#          ssh-keygen -t rsa -b 2048 -m PEM -f ~/Desktop/ios_distribution_private_key -q -N ""
+#        and paste the entire file contents. Codemagic creates the Apple
+#        Distribution certificate from this key at build time (Apple caps
+#        distribution certificates at 3 per account).
+#      Create the API key in App Store Connect → Users and Access →
+#      Integrations → App Store Connect API (App Manager role; download
+#      the .p8 once — it cannot be re-downloaded).
+#   5. In the Codemagic app settings, rescan for this codemagic.yaml on
+#      branch master, then Start new build -> ios-production-ipa.
 
 workflows:
   android-production-aab:
@@ -127,3 +162,89 @@ workflows:
           EOF
     artifacts:
       - android/app/build/outputs/bundle/release/app-release.aab
+
+  ios-production-ipa:
+    name: iOS production IPA (build 1)
+    max_build_duration: 60
+    # Free plan: only mac_mini_m2 is available without billing enabled
+    # (the 500 free minutes/month are Mac mini M2 minutes).
+    instance_type: mac_mini_m2
+    environment:
+      node: 24
+      xcode: latest
+      cocoapods: default
+      # Automatic iOS code signing via the App Store Connect API key.
+      # The four signing variables live in the "boba-buddies" group
+      # (see the iOS setup in the header): Codemagic's app-store-connect
+      # CLI reads APP_STORE_CONNECT_KEY_IDENTIFIER /
+      # APP_STORE_CONNECT_ISSUER_ID / APP_STORE_CONNECT_PRIVATE_KEY, and
+      # CERTIFICATE_PRIVATE_KEY is the RSA key Codemagic uses to create
+      # or fetch the Apple Distribution certificate. Do NOT add an
+      # `ios_signing` block to this workflow — Codemagic allows only one
+      # signing method per workflow. The same group also carries
+      # EXPO_PUBLIC_REVENUECAT_IOS_KEY (see header, step 3).
+      groups:
+        - boba-buddies
+      vars:
+        EXPO_NO_TELEMETRY: "1"
+        BUNDLE_ID: com.adaptationapps.bobabuddies
+        XCODE_WORKSPACE: BobaBuddies.xcworkspace
+        XCODE_SCHEME: BobaBuddies
+    scripts:
+      - name: Install dependencies
+        script: |
+          npm ci
+
+      - name: Typecheck
+        script: |
+          npx tsc --noEmit
+
+      - name: Generate native iOS project
+        script: |
+          npx expo prebuild --platform ios --non-interactive
+
+      - name: Verify generated build number
+        # app.json sets ios.buildNumber "1" (first iOS build; iOS build
+        # numbers are independent of Android's versionCode 9) and version
+        # "1.0.0". Fail loudly if prebuild produced anything else.
+        script: |
+          BUILD_NUMBER=$(/usr/libexec/PlistBuddy -c "Print CFBundleVersion" ios/BobaBuddies/Info.plist)
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" ios/BobaBuddies/Info.plist)
+          echo "CFBundleVersion=$BUILD_NUMBER CFBundleShortVersionString=$VERSION"
+          [ "$BUILD_NUMBER" = "1" ] || { echo "ERROR: expected build number 1, got $BUILD_NUMBER" >&2; exit 1; }
+          [ "$VERSION" = "1.0.0" ] || { echo "ERROR: expected version 1.0.0, got $VERSION" >&2; exit 1; }
+
+      - name: Install CocoaPods dependencies
+        script: |
+          cd ios
+          pod install
+
+      - name: Set up keychain for code signing
+        script: |
+          keychain initialize
+
+      - name: Fetch signing files
+        # Creates the App Store provisioning profile and the distribution
+        # certificate (from CERTIFICATE_PRIVATE_KEY) if they don't exist
+        # yet. Requires the App Store Connect app record (header, step 1)
+        # so the bundle ID exists in the Apple Developer portal.
+        script: |
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+
+      - name: Add certificates to keychain
+        script: |
+          keychain add-certificates
+
+      - name: Set up code signing settings on Xcode project
+        script: |
+          xcode-project use-profiles
+
+      - name: Build IPA for distribution
+        script: |
+          xcode-project build-ipa \
+            --workspace "$CM_BUILD_DIR/ios/$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
