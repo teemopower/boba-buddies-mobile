@@ -415,7 +415,8 @@ export const useGameStore: UseBoundStore<StoreApi<GameStore>> = create<GameStore
 /**
  * Mini-game reward (popup.js gameReward). Games are NOT in this module —
  * the UI agent builds them and calls this with the result.
- * Blocked when sick or sad (returns null, nothing changes).
+ * Blocked when sad (returns null, nothing changes). Sick pets CAN play
+ * (Nov 25, 2026 fix — see ppGameReward in logic.ts).
  * Win: +15 coins, +12 happiness (+8 more with Star Toy), weight -1,
  * excited for 30s. Lose: +3 coins, +4 happiness.
  */

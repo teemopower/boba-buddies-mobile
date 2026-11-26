@@ -604,7 +604,10 @@ export function ppDoPet(state: PetState, now: number): boolean {
 /**
  * Mini-game reward (popup.js gameReward). Games themselves are NOT in this
  * module — the UI calls this with the result.
- * Blocked when sick or sad (returns null, nothing changes).
+ * Blocked when sad (returns null, nothing changes). Sick pets CAN play
+ * (Nov 25, 2026 fix): a sick pet with < 10 coins could otherwise never
+ * earn the coins for medicine — a soft-lock. The extension still blocks
+ * sick pets; this is a deliberate mobile-only divergence.
  * Win: +15 coins, +12 happiness (+8 more with Star Toy), weight -1,
  * excited for 30s. Lose: +3 coins, +4 happiness.
  */
@@ -616,7 +619,7 @@ export function ppGameReward(
   const state = save.pets[save.activePet];
   if (!state) return null;
   const mood = ppDeriveMood(state, now);
-  if (mood === 'sick' || mood === 'sad') return null;
+  if (mood === 'sad') return null;
   if (won) {
     const bonus = save.shop.starToy ? 8 : 0;
     state.meters.happiness = ppClamp(state.meters.happiness + 12 + bonus);

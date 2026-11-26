@@ -419,8 +419,20 @@ async function main(): Promise<void> {
     sad.pets.momo.meters.hunger = 0; // -> sad mood
     check('game blocked when sad', L.ppGameReward(sad, true, NOW), null);
     const sick = L.ppDefaultSave(NOW);
-    sick.pets.momo.meters.health = 10;
-    check('game blocked when sick', L.ppGameReward(sick, true, NOW), null);
+    sick.pets.momo.meters.health = 10; // -> sick mood
+    const sickWin = L.ppGameReward(sick, true, NOW);
+    check('game allowed when sick: win +15 coins', sickWin?.coins, 15);
+    check('game allowed when sick: coins in save', sick.coins, 65);
+    const sickBroke = L.ppDefaultSave(NOW);
+    sickBroke.coins = 0;
+    sickBroke.pets.momo.meters.health = 10; // sick + broke: the old soft-lock
+    const sickBrokeWin = L.ppGameReward(sickBroke, true, NOW);
+    check('sick + broke: win pays +15 coins', sickBrokeWin?.coins, 15);
+    check('sick + broke: medicine now affordable', L.ppDoMedicine(sickBroke, NOW), true);
+    check('sick + broke: medicine -10 coins', sickBroke.coins, 5);
+    const sickLose = L.ppDefaultSave(NOW);
+    sickLose.pets.momo.meters.health = 10;
+    check('game allowed when sick: loss +3 coins', L.ppGameReward(sickLose, false, NOW)?.coins, 3);
   }
 
   // --- Extra: shop buy/equip -------------------------------------------------------

@@ -12,7 +12,9 @@
  * Every game calls the module-level gameReward(won) from the game store:
  * win +15 coins / +12 happiness (+8 more with Star Toy) / weight −1 /
  * excited 30s; lose +3 coins / +4 happiness. Games are blocked when the
- * pet is sick or sad, with the extension's toast wording.
+ * pet is sad, with the extension's toast wording. Sick pets CAN play
+ * (Nov 25, 2026 fix — otherwise a sick pet with < 10 coins could never
+ * earn the coins for medicine).
  *
  * Music: playtime while on this tab.
  */
@@ -50,11 +52,6 @@ export default function PlayScreen() {
   );
 
   const open = (id: GameId) => {
-    if (mood === 'sick') {
-      showToast('Too sick to play — give medicine first! 🤒');
-      audioPlayer.playSfx('error');
-      return;
-    }
     if (mood === 'sad') {
       showToast('Too sad to play — fix a need first! 🥺');
       audioPlayer.playSfx('error');
@@ -75,12 +72,8 @@ export default function PlayScreen() {
         <Text style={sharedStyles.sub}>
           Win a game: +15 coins, +12 happiness (Star Toy: +8 more), weight −1. Just playing: +3 coins, +4 happiness.
         </Text>
-        {mood === 'sick' || mood === 'sad' ? (
-          <Text style={styles.blocked}>
-            {mood === 'sick'
-              ? 'Too sick to play — give medicine first! 🤒'
-              : 'Too sad to play — fix a need first! 🥺'}
-          </Text>
+        {mood === 'sad' ? (
+          <Text style={styles.blocked}>Too sad to play — fix a need first! 🥺</Text>
         ) : null}
         <View style={styles.list}>
           {GAMES.map((g) => (
@@ -88,7 +81,7 @@ export default function PlayScreen() {
               key={g.id}
               style={styles.card}
               onPress={() => open(g.id)}
-              disabled={mood === 'sick' || mood === 'sad'}
+              disabled={mood === 'sad'}
               testID={`game-${g.id}`}
             >
               <Text style={styles.emoji}>{g.emoji}</Text>
