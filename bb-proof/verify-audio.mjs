@@ -46,6 +46,21 @@ try {
   await waitServer(`http://127.0.0.1:${PORT}/`);
   browser = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox', '--autoplay-policy=no-user-gesture-required'] });
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  // Record every HTMLAudioElement play/pause so the background test can
+  // tell the music loop (loop=true, Cozy Hearth file) from one-shot SFX.
+  await page.addInitScript(() => {
+    window.__audioCalls = [];
+    const origPlay = HTMLAudioElement.prototype.play;
+    const origPause = HTMLAudioElement.prototype.pause;
+    HTMLAudioElement.prototype.play = function (...args) {
+      window.__audioCalls.push({ action: 'play', loop: this.loop, src: this.currentSrc || this.src || '', t: Date.now() });
+      return origPlay.apply(this, args);
+    };
+    HTMLAudioElement.prototype.pause = function (...args) {
+      window.__audioCalls.push({ action: 'pause', loop: this.loop, src: this.currentSrc || this.src || '', t: Date.now() });
+      return origPause.apply(this, args);
+    };
+  });
   page.on('console', (msg) => {
     const text = msg.text();
     if (msg.type() === 'error') consoleErrors.push(text);
@@ -87,12 +102,43 @@ try {
   }
   await page.waitForTimeout(4000); // let SFX lifetimes + watchdog ticks run
 
+  // Background test (Nov 25 bug #2 — music kept playing after Home):
+  // hide the document (React Native Web's AppState maps this to
+  // 'background'), expect the loop to pause and NOT restart while
+  // hidden, then show it again and expect the loop to resume.
+  const musicCalls = () => page.evaluate(() => (window.__audioCalls || []).filter((c) => c.loop || c.src.includes('cozy')));
+  const callsBeforeHide = await musicCalls();
+  console.log('MUSIC_CALLS_BEFORE_HIDE:', JSON.stringify(callsBeforeHide));
+  const hideAt = Date.now();
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await page.waitForTimeout(1500);
+  const callsWhileHidden = (await musicCalls()).filter((c) => c.t >= hideAt);
+  console.log('MUSIC_CALLS_WHILE_HIDDEN:', JSON.stringify(callsWhileHidden));
+  const pausedOnHide = callsWhileHidden.some((c) => c.action === 'pause');
+  const restartedWhileHidden = callsWhileHidden.some((c) => c.action === 'play');
+  const showAt = Date.now();
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await page.waitForTimeout(3000); // resumeAudio is async; watchdog is 3s
+  const callsAfterShow = (await musicCalls()).filter((c) => c.t >= showAt);
+  console.log('MUSIC_CALLS_AFTER_SHOW:', JSON.stringify(callsAfterShow));
+  const resumedOnShow = callsAfterShow.some((c) => c.action === 'play');
+  console.log('BACKGROUND_TEST:', JSON.stringify({ musicWasPlaying: callsBeforeHide.some((c) => c.action === 'play'), pausedOnHide, restartedWhileHidden, resumedOnShow }));
+
   console.log('CONSOLE_ERRORS:', JSON.stringify(consoleErrors, null, 2));
   console.log('AUDIO_WARNINGS:', JSON.stringify(consoleAudioWarns, null, 2));
   console.log('PAGE_ERRORS:', JSON.stringify(pageErrors, null, 2));
   console.log('FAILED_AUDIO_REQUESTS:', JSON.stringify(failedRequests, null, 2));
 
-  const ok = roomVisible && pageErrors.length === 0 && consoleErrors.length === 0 && failedRequests.length === 0;
+  const ok = roomVisible && pageErrors.length === 0 && consoleErrors.length === 0 && failedRequests.length === 0
+    && callsBeforeHide.some((c) => c.action === 'play') && pausedOnHide && !restartedWhileHidden && resumedOnShow;
   console.log(ok ? 'SMOKE_TEST: PASS' : 'SMOKE_TEST: FAIL');
   process.exitCode = ok ? 0 : 1;
 } finally {

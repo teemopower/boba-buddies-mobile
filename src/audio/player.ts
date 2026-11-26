@@ -61,6 +61,22 @@
  *      fire-and-forget calls can't interleave, and add a status
  *      listener + watchdog + foreground resume so a stopped player
  *      is restarted instead of staying silent forever.
+ *
+ * NOV 25, 2026 BUG #2 — music keeps playing after pressing Home
+ * (user testing build #7 on Android): the fix above created the
+ * opposite problem. keepAudioSessionActive: true holds the audio
+ * session/focus when the player pauses, and NOTHING ever paused the
+ * loop when the app left the foreground — the old code had no
+ * background handling at all, so before the fix the OS tore the
+ * session down on its own. Worse, the status listener could even
+ * RESTART music in the background: a background pause emits
+ * playing=false while shouldBePlaying() is true, so recoverMusic()
+ * re-issued play(). Fix: pause the loop the moment AppState leaves
+ * 'active' (background/inactive), resume on return, and make
+ * shouldBePlaying() / applyMusicState() foreground-only so no
+ * recovery path can start music behind the user's back. The loop
+ * keeps its source loaded while paused, so it resumes from the
+ * same spot on return.
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -220,7 +236,7 @@ class AudioService {
     this.initialized = true;
     this.applyMusicState();
     this.startWatchdog();
-    this.startForegroundResume();
+    this.startAppStateHandling();
   }
 
   /** (Re-)assert the audio session: activate it and re-apply the
@@ -297,9 +313,16 @@ class AudioService {
     }
   }
 
-  /** Should the loop be audible right now? */
+  /** Should the loop be audible right now? Foreground only — no
+   * recovery path may start music while the app is backgrounded
+   * (Nov 25, 2026 bug #2: music kept playing after pressing Home). */
   private shouldBePlaying(): boolean {
-    return this.initialized && this.musicOn && !this.muted;
+    return (
+      this.initialized &&
+      this.musicOn &&
+      !this.muted &&
+      AppState.currentState === 'active'
+    );
   }
 
   private onMusicStatusUpdate(status: MusicStatus): void {
@@ -389,15 +412,35 @@ class AudioService {
     }, WATCHDOG_MS);
   }
 
-  /** Resume audio when the app comes back to the foreground — the
-   * OS may have paused players while the app was backgrounded, and
-   * nothing re-issued play() before this fix. */
-  private startForegroundResume(): void {
+  /** Pause the loop the moment the app leaves the foreground (Home,
+   * app switcher, lock screen, incoming call). The player keeps its
+   * source loaded, so returning resumes from the same spot. Never
+   * throws. */
+  private pauseMusicForBackground(): void {
+    const player = this.musicPlayer;
+    if (!player) return;
+    try {
+      player.pause();
+    } catch (e) {
+      console.warn('[audio] Failed to pause music on background:', e);
+    }
+  }
+
+  /** AppState handling, both directions: resume audio when the app
+   * comes back to the foreground (the OS may have paused players
+   * while the app was backgrounded, and nothing re-issued play()
+   * before the Nov 25 fix), and pause the loop the moment it
+   * leaves the foreground (Nov 25, 2026 bug #2 — with
+   * keepAudioSessionActive the loop otherwise kept playing after
+   * pressing Home). */
+  private startAppStateHandling(): void {
     if (this.appStateSub !== null) return;
     try {
       this.appStateSub = AppState.addEventListener('change', (state) => {
         if (state === 'active') {
           void this.resumeAudio();
+        } else if (state === 'background' || state === 'inactive') {
+          this.pauseMusicForBackground();
         }
       });
     } catch (e) {
@@ -405,12 +448,20 @@ class AudioService {
     }
   }
 
-  /** Start or pause the loop to match musicOn/muted. Never throws. */
+  /** Start or pause the loop to match musicOn/muted. Never throws.
+   * Never starts playback while backgrounded — applyMusicState is
+   * reached from recovery paths too, so the foreground check here
+   * is the last line of defence against music starting behind the
+   * user's back. */
   private applyMusicState(): void {
     const player = this.musicPlayer;
     if (!player) return;
     try {
-      if (this.musicOn && !this.muted) {
+      if (
+        this.musicOn &&
+        !this.muted &&
+        AppState.currentState === 'active'
+      ) {
         player.play();
       } else {
         player.pause();
