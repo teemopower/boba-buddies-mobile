@@ -9,8 +9,9 @@
 #
 # Manual trigger only — no `triggering` section means builds start only
 # from the Codemagic UI (Start new build) or API, never on push.
-# Nothing here submits to Google Play, TestFlight or the App Store; the
-# AAB/IPA is downloaded and submitted by a human with the user's go-ahead.
+# The iOS workflow uploads its IPA to TestFlight (user go-ahead Nov 26,
+# 2026); the Android AAB is downloaded and submitted by a human with the
+# user's go-ahead.
 #
 # Workflows:
 #   android-production-aab — signed release AAB (versionCode 9).
@@ -280,3 +281,14 @@ workflows:
             -exportOptionsPlist /tmp/ExportOptions.plist
     artifacts:
       - build/ios/ipa/*.ipa
+    publishing:
+      # TestFlight (user go-ahead Nov 26, 2026): the signed IPA is
+      # uploaded to App Store Connect and submitted to TestFlight
+      # (internal testing) using the same ASC API key the workflow
+      # already uses for code signing (group "boba-buddies").
+      # The Android AAB workflow stays download-only.
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        submit_to_testflight: true
